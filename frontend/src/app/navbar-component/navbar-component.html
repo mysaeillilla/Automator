@@ -1,0 +1,94 @@
+<!-- Header -->
+<header class="home-header">
+
+  <!-- Logo -->
+  <div class="header-left">
+
+    <div class="logo" routerLink="/">
+
+      <span class="logo-icon">
+        ⚡
+      </span>
+
+      <span class="logo-text">
+        Automator
+      </span>
+
+    </div>
+
+  </div>
+
+
+  <!-- Header Right -->
+  <div class="header-right">
+
+    @if (isLoggedIn()) {
+
+      <!-- Notification -->
+      <button
+        class="notification-btn"
+        title="Notifications">
+
+        🔔
+
+        <span class="notification-dot"></span>
+
+      </button>
+
+
+      <!-- Profile -->
+      <div class="profile">
+
+        <div class="profile-avatar">
+          {{ getInitials(username()) }}
+        </div>
+
+        <div class="profile-info">
+
+          <span class="profile-name">
+            {{ username() }}
+          </span>
+
+          <span class="profile-role">
+            {{ role() }}
+          </span>
+
+
+
+        </div>
+<div class="header-navigation">
+
+  @if (role().toLowerCase() == 'admin') {
+
+              <a routerLink="/admin-panel"  class="nav-link">Admin Panel</a>
+
+          }
+          @else {
+
+             <a href="/admin-panel"  class="nav-link">Dashboard</a>
+          }
+</div>
+      </div>
+
+
+      <!-- Logout -->
+      <button
+        class="logout-btn"
+        (click)="logout()"
+        title="Logout">
+
+        <span class="logout-icon">
+          ⇥
+        </span>
+
+        <span>
+          Logout
+        </span>
+
+      </button>
+
+    }
+
+  </div>
+
+</header>

@@ -1,0 +1,307 @@
+  <app-navbar-component />
+
+<div class="admin-shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-dot"></span>
+
+      @if (isAdmin()) {
+      <span class="brand-text">Admin Panel</span>
+
+      }
+      @else {
+
+      <span class="brand-text">Dashboard</span>
+
+      }
+    </div>
+
+    <nav class="nav-list">
+      @for (item of navItems; track item.key) {
+        <button
+          class="nav-item"
+          [class.active]="selected() === item.key"
+          (click)="select(item.key)">
+          <svg viewBox="0 0 24 24" class="nav-icon"><path [attr.d]="item.icon"/></svg>
+          <span>{{ item.label }}</span>
+        </button>
+      }
+    </nav>
+  </aside>
+
+  <main class="content-panel">
+    <header class="content-header">
+      <h2>{{ activeLabel() }}</h2>
+
+      @if (selected() === 'users') {
+        <button class="primary-btn" (click)="openUserModal()">+ Add User</button>
+      }
+      @if (selected() === 'department' && isAdmin() ) {
+        <button class="primary-btn" (click)="openDeptModal()">+ Add Department</button>
+      }
+    </header>
+
+    <div class="content-body">
+      @switch (selected()) {
+
+        @case ('users') {
+          @if (loading().users) {
+            <div class="state-message">Loading users…</div>
+          } @else if (error().users) {
+            <div class="state-message state-error">
+              {{ error().users }}
+              <button class="retry-btn" (click)="retry('users')">Retry</button>
+            </div>
+          } @else {
+            @if (deleteUserError()) {
+              <div class="form-error">{{ deleteUserError() }}</div>
+            }
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>User Name</th>
+                  <th>Role</th>
+                  <th>Created At</th>
+                  <th>Last Active</th>
+                  @if (isAdmin()) { <th></th> }
+                </tr>
+              </thead>
+              <tbody>
+                @for (u of users(); track u.id) {
+                  <tr>
+                    <td>{{ u.userName }}</td>
+                    <td><span class="badge">{{ u.role }}</span></td>
+                    <td>{{ u.createdAt }}</td>
+                    <td>{{ u.lastActive }}</td>
+                    @if (isAdmin()) {
+                      <td>
+                        <button
+                          class="danger-btn small"
+                          [disabled]="deleteUserPendingId() === u.id"
+                          (click)="deleteUser(u)">
+                          {{ deleteUserPendingId() === u.id ? 'Deleting…' : 'Delete' }}
+                        </button>
+                      </td>
+                    }
+                  </tr>
+                } @empty {
+                  <tr><td [attr.colspan]="isAdmin() ? 5 : 4" class="empty-cell">No users found.</td></tr>
+                }
+              </tbody>
+            </table>
+          }
+        }
+
+        @case ('department') {
+          @if (loading().department) {
+            <div class="state-message">Loading departments…</div>
+          } @else if (error().department) {
+            <div class="state-message state-error">
+              {{ error().department }}
+              <button class="retry-btn" (click)="retry('department')">Retry</button>
+            </div>
+          } @else {
+            <table class="data-table">
+              <thead>
+                <tr><th>Department</th><th>Description</th><th>Users</th><th>Created At</th><th></th></tr>
+              </thead>
+              <tbody>
+                @for (d of departments(); track d.id) {
+                  <tr>
+                    <td>{{ d.departmentName }}</td>
+                    <td>{{ d.description }}</td>
+                    <td>{{ d.userCount }}</td>
+                    <td>{{ d.createdAt | date:'MMM d, y, h:mm a' }}</td>
+                    <td>
+
+                      @if (isAdmin()) {
+
+                      <button class="link-btn" (click)="openMembersModal(d)">Manage users</button>
+
+                      }
+                    </td>
+                  </tr>
+                } @empty {
+                  <tr><td colspan="5" class="empty-cell">No departments found.</td></tr>
+                }
+              </tbody>
+            </table>
+          }
+        }
+
+        @case ('schedules') {
+          <table class="data-table">
+            <thead>
+              <tr><th>Process</th><th>Time</th><th>Frequency</th><th>Next Run</th></tr>
+            </thead>
+            <tbody>
+              @for (s of schedules(); track s.id) {
+                <tr>
+                  <td>{{ s.process }}</td>
+                  <td>{{ s.time }}</td>
+                  <td>{{ s.frequency }}</td>
+                  <td>{{ s.nextRun }}</td>
+                </tr>
+              } @empty {
+                <tr><td colspan="4" class="empty-cell">Schedules API not wired up yet.</td></tr>
+              }
+            </tbody>
+          </table>
+        }
+
+        @case ('history') {
+          <table class="data-table">
+            <thead>
+              <tr><th>Action</th><th>User</th><th>Timestamp</th></tr>
+            </thead>
+            <tbody>
+              @for (h of history(); track h.id) {
+                <tr>
+                  <td>{{ h.action }}</td>
+                  <td>{{ h.user }}</td>
+                  <td>{{ h.timestamp }}</td>
+                </tr>
+              } @empty {
+                <tr><td colspan="3" class="empty-cell">History API not wired up yet.</td></tr>
+              }
+            </tbody>
+          </table>
+        }
+      }
+    </div>
+  </main>
+</div>
+
+<!-- ===================== CREATE USER MODAL ===================== -->
+@if (showUserModal()) {
+  <div class="modal-backdrop" (click)="closeUserModal()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <h3>Add User</h3>
+
+      <label class="field">
+        <span>Username</span>
+        <input type="text" [(ngModel)]="newUser.userName" placeholder="e.g. saeillilla" />
+      </label>
+
+      <label class="field">
+        <span>Role</span>
+        <select [(ngModel)]="newUser.role">
+          @for (r of roleOptions; track r.value) {
+            <option [value]="r.value">{{ r.label }}</option>
+          }
+        </select>
+      </label>
+
+      <label class="field">
+        <span>Password</span>
+        <input type="password" [(ngModel)]="newUser.password" placeholder="••••••••" />
+      </label>
+
+      @if (userFormError()) {
+        <div class="form-error">{{ userFormError() }}</div>
+      }
+
+      <div class="modal-actions">
+        <button class="secondary-btn" (click)="closeUserModal()">Cancel</button>
+        <button class="primary-btn" [disabled]="userFormSubmitting()" (click)="submitNewUser()">
+          {{ userFormSubmitting() ? 'Creating…' : 'Create User' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ===================== CREATE DEPARTMENT MODAL ===================== -->
+@if (showDeptModal()) {
+  <div class="modal-backdrop" (click)="closeDeptModal()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <h3>Add Department</h3>
+
+      <label class="field">
+        <span>Department Name</span>
+        <input type="text" [(ngModel)]="newDept.departmentName" placeholder="e.g. Finance" />
+      </label>
+
+      <label class="field">
+        <span>Description</span>
+        <input type="text" [(ngModel)]="newDept.description" placeholder="e.g. Finance Department" />
+      </label>
+
+      @if (deptFormError()) {
+        <div class="form-error">{{ deptFormError() }}</div>
+      }
+
+      <div class="modal-actions">
+        <button class="secondary-btn" (click)="closeDeptModal()">Cancel</button>
+        <button class="primary-btn" [disabled]="deptFormSubmitting()" (click)="submitNewDepartment()">
+          {{ deptFormSubmitting() ? 'Creating…' : 'Create Department' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ===================== MANAGE MEMBERS MODAL ===================== -->
+@if (showMembersModal() && activeDept()) {
+  <div class="modal-backdrop" (click)="closeMembersModal()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <h3>Manage Users — {{ activeDept()!.departmentName }}</h3>
+
+      @if (memberActionError()) {
+        <div class="form-error">{{ memberActionError() }}</div>
+      }
+
+      @if (membersLoading()) {
+        <div class="state-message">Loading members…</div>
+      } @else {
+        <ul class="member-list">
+          <!-- Already added -->
+          @for (u of deptMembers(); track u.id) {
+            <li class="member-row">
+              <div>
+                <div class="member-name">{{ u.userName }}</div>
+                <div class="member-role">{{ roleLabel(u.role) }}</div>
+              </div>
+              <div class="member-actions">
+                <button
+                  class="danger-btn small"
+                  [disabled]="memberActionPendingId() === u.id"
+                  (click)="removeUserFromDepartment(u.id)">
+                  {{ memberActionPendingId() === u.id ? '…' : 'Remove' }}
+                </button>
+              </div>
+            </li>
+          } @empty {
+            <li class="empty-cell">No users in this department yet.</li>
+          }
+
+          <hr class="member-divider" />
+
+          <!-- Not yet added -->
+          @for (u of availableUsers(); track u.id) {
+            <li class="member-row">
+              <div>
+                <div class="member-name">{{ u.userName }}</div>
+                <div class="member-role">{{ roleLabel(u.role) }}</div>
+              </div>
+              <div class="member-actions">
+                <button
+                  class="secondary-btn small"
+                  [disabled]="memberActionPendingId() === u.id"
+                  (click)="addUserToDepartment(u.id)">
+                  {{ memberActionPendingId() === u.id ? '…' : 'Add' }}
+                </button>
+              </div>
+            </li>
+          } @empty {
+            <li class="empty-cell">All users are already in this department.</li>
+          }
+        </ul>
+      }
+
+      <div class="modal-actions">
+        <button class="secondary-btn" (click)="closeMembersModal()">Close</button>
+      </div>
+    </div>
+  </div>
+}

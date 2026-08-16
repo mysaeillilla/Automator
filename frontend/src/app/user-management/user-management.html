@@ -1,0 +1,373 @@
+<div class="user-management">
+
+  <!-- Page Header -->
+  <div class="page-header">
+
+    <div class="page-title">
+
+      <span class="page-label">
+        Administration
+      </span>
+
+      <h1>
+        User Management
+      </h1>
+
+      <p>
+        Manage users and their access roles.
+      </p>
+
+    </div>
+
+
+    <button
+      class="create-btn"
+      (click)="openCreateUser()">
+
+      <span>＋</span>
+
+      Create User
+
+    </button>
+
+  </div>
+
+
+  <!-- Success Message -->
+  @if (successMessage()) {
+
+    <div class="success-message">
+      {{ successMessage() }}
+    </div>
+
+  }
+
+
+  <!-- Error Message -->
+  @if (errorMessage() && !showCreateModal()) {
+
+    <div class="error-message">
+      {{ errorMessage() }}
+    </div>
+
+  }
+
+
+  <!-- Users Card -->
+  <div class="users-card">
+
+    <div class="card-header">
+
+      <div>
+
+        <h2>
+          Users
+        </h2>
+
+        <p>
+          {{ users().length }} registered users
+        </p>
+
+      </div>
+
+      <button
+        class="refresh-btn"
+        (click)="loadUsers()">
+
+        ↻ Refresh
+
+      </button>
+
+    </div>
+
+
+    <!-- Loading -->
+    @if (loading()) {
+
+      <div class="loading">
+        Loading users...
+      </div>
+
+    }
+
+
+    <!-- Table -->
+    @if (!loading()) {
+
+      <div class="table-wrapper">
+
+        <table>
+
+          <thead>
+
+            <tr>
+
+              <th>
+                User
+              </th>
+
+              <th>
+                Role
+              </th>
+
+              <th>
+                Created
+              </th>
+
+              <th>
+                Last Active
+              </th>
+
+            </tr>
+
+          </thead>
+
+
+          <tbody>
+
+            @for (user of users(); track user.id) {
+
+              <tr>
+
+                <!-- User -->
+                <td>
+
+                  <div class="user-cell">
+
+                    <div class="avatar">
+                      {{ getInitials(user.userName) }}
+                    </div>
+
+                    <div>
+
+                      <div class="user-name">
+                        {{ user.userName }}
+                      </div>
+
+                      <div class="user-id">
+                        {{ user.id }}
+                      </div>
+
+                    </div>
+
+                  </div>
+
+                </td>
+
+
+                <!-- Role -->
+                <td>
+
+                  <span
+                    class="role-badge"
+                    [class.admin]="user.role === 'Admin'"
+                    [class.developer]="user.role === 'Developer'"
+                    [class.creator]="user.role === 'Creator'">
+
+                    {{ user.role }}
+
+                  </span>
+
+                </td>
+
+
+                <!-- Created -->
+                <td>
+
+                  {{ user.createdAt }}
+
+                </td>
+
+
+                <!-- Last Active -->
+                <td>
+
+                  {{ user.lastActive }}
+
+                </td>
+
+              </tr>
+
+            }
+
+
+            @if (users().length === 0) {
+
+              <tr>
+
+                <td
+                  colspan="4"
+                  class="empty">
+
+                  No users found.
+
+                </td>
+
+              </tr>
+
+            }
+
+          </tbody>
+
+        </table>
+
+      </div>
+
+    }
+
+  </div>
+
+</div>
+
+
+<!-- =====================================================
+     CREATE USER MODAL
+===================================================== -->
+
+@if (showCreateModal()) {
+
+  <div
+    class="modal-overlay"
+    (click)="closeCreateUser()">
+
+    <div
+      class="modal"
+      (click)="$event.stopPropagation()">
+
+
+      <!-- Modal Header -->
+      <div class="modal-header">
+
+        <div>
+
+          <h2>
+            Create User
+          </h2>
+
+          <p>
+            Add a new user to Automator.
+          </p>
+
+        </div>
+
+
+        <button
+          class="close-btn"
+          (click)="closeCreateUser()">
+
+          ×
+
+        </button>
+
+      </div>
+
+
+      <!-- Modal Body -->
+      <div class="modal-body">
+
+
+        <!-- Error -->
+        @if (errorMessage()) {
+
+          <div class="modal-error">
+            {{ errorMessage() }}
+          </div>
+
+        }
+
+
+        <!-- Username -->
+        <div class="form-group">
+
+          <label>
+            Username
+          </label>
+
+          <input
+            type="text"
+            [(ngModel)]="newUser.userName"
+            placeholder="Enter username"
+            autocomplete="off">
+
+        </div>
+
+
+        <!-- Password -->
+        <div class="form-group">
+
+          <label>
+            Password
+          </label>
+
+          <input
+            type="password"
+            [(ngModel)]="newUser.password"
+            placeholder="Enter password"
+            autocomplete="new-password">
+
+        </div>
+
+
+        <!-- Role -->
+        <div class="form-group">
+
+          <label>
+            Role
+          </label>
+
+          <select
+            [(ngModel)]="newUser.role">
+
+            @for (role of roles; track role) {
+
+              <option [value]="role">
+                {{ role }}
+              </option>
+
+            }
+
+          </select>
+
+        </div>
+
+      </div>
+
+
+      <!-- Modal Footer -->
+      <div class="modal-footer">
+
+        <button
+          class="cancel-btn"
+          (click)="closeCreateUser()"
+          [disabled]="creating()">
+
+          Cancel
+
+        </button>
+
+
+        <button
+          class="submit-btn"
+          (click)="createUser()"
+          [disabled]="creating()">
+
+          @if (creating()) {
+
+            Creating...
+
+          }
+          @else {
+
+            Create User
+
+          }
+
+        </button>
+
+      </div>
+
+    </div>
+
+  </div>
+
+}

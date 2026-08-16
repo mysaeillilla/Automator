@@ -1,0 +1,86 @@
+/* login.component.css */
+.login-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: #F3F5F8;
+}
+
+.login-card {
+  background: #ffffff;
+  border: 1px solid #DDE2E7;
+  border-radius: 14px;
+  padding: 2.5rem;
+  width: 100%;
+  max-width: 380px;
+}
+
+.login-card h1 {
+  margin: 0 0 1.5rem;
+  font-size: 1.5rem;
+  color: #1a1a1a;
+}
+
+.form-group {
+  margin-bottom: 1.25rem;
+}
+
+label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #444;
+}
+
+input {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #DDE2E7;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  box-sizing: border-box;
+}
+
+input:focus {
+  outline: none;
+  border-color: #2387D9;
+}
+
+input.invalid {
+  border-color: #E8623D;
+}
+
+.error-text {
+  display: block;
+  color: #E8623D;
+  font-size: 0.8rem;
+  margin-top: 0.3rem;
+}
+
+.server-error {
+  background: #FBF3EA;
+  color: #E8623D;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+button {
+  width: 100%;
+  padding: 0.7rem;
+  background: #2387D9;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

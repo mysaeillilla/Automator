@@ -1,0 +1,147 @@
+# =========================================================
+# Root / OS
+# =========================================================
+
+# Visual Studio / VS Code
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+
+# =========================================================
+# .NET / ASP.NET Core - backend
+# =========================================================
+
+# Build output
+**/bin/
+**/obj/
+
+# .NET user-specific files
+*.user
+*.suo
+
+# Test results
+TestResults/
+**/TestResults/
+*.trx
+
+# Coverage
+coverage/
+**/coverage/
+*.coverage
+*.coveragexml
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+
+# ASP.NET Core generated files
+wwwroot/
+
+<<<<<<< HEAD
+=======
+# Local configuration / secrets
+**/appsettings.Development.json
+**/appsettings.Local.json
+**/appsettings.*.Local.json
+
+# User secrets
+**/secrets.json
+
+# Entity Framework
+**/Migrations/
+>>>>>>> 449dc38159df8fda8e2c25be5bf1f2126f65baaa
+
+
+# =========================================================
+# Angular - frontend
+# =========================================================
+
+# Dependencies
+frontend/node_modules/
+
+<<<<<<< HEAD
+=======
+# Angular build output
+frontend/dist/
+frontend/.angular/
+
+# Angular cache
+frontend/.angular/cache/
+
+# Environment files containing local secrets
+frontend/src/environments/environment.local.ts
+frontend/src/environments/environment.*.local.ts
+
+# Test / coverage
+frontend/coverage/
+
+# Temporary files
+frontend/.sass-cache/
+frontend/.eslintcache
+
+
+>>>>>>> 449dc38159df8fda8e2c25be5bf1f2126f65baaa
+# =========================================================
+# Environment / Secrets
+# =========================================================
+
+.env
+.env.*
+!.env.example
+
+**/.env
+**/.env.*
+
+# Certificates / keys
+*.pfx
+*.p12
+*.pem
+*.key
+
+
+# =========================================================
+# Temporary files
+# =========================================================
+
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+
+# =========================================================
+# Package manager
+# =========================================================
+
+# npm
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Angular local config
+.angular/

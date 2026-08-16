@@ -1,0 +1,219 @@
+<div class="home-container">
+
+<app-navbar-component />
+
+  <!-- Main Content -->
+  <main class="home-content">
+
+    <!-- Welcome Section -->
+    <section class="welcome-section">
+
+      <div>
+        <p class="welcome-label">Dashboard</p>
+
+        <h1>
+          Welcome back, Saeil 👋
+        </h1>
+
+        <p class="welcome-description">
+          Manage your automations, workflows and bot executions
+          from one place.
+        </p>
+      </div>
+
+      <button
+        class="primary-btn"
+        routerLink="/workflow">
+
+        <span>＋</span>
+        Create Workflow
+
+      </button>  <button
+        class="primary-btn"
+        routerLink="/workflow">
+
+        <span>＋</span>
+        Create User
+
+      </button>
+
+    </section>
+
+
+    <!-- Statistics -->
+    <section class="stats-grid">
+
+      <div
+        class="stat-card"
+        *ngFor="let stat of stats"
+        [routerLink]="stat.route">
+
+        <div class="stat-top">
+
+          <div class="stat-icon">
+            {{ stat.icon }}
+          </div>
+
+          <span class="stat-arrow">
+            →
+          </span>
+
+        </div>
+
+        <div class="stat-value">
+          {{ stat.value }}
+        </div>
+
+        <div class="stat-title">
+          {{ stat.title }}
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- Main Grid -->
+    <section class="dashboard-grid">
+
+      <!-- Quick Actions -->
+      <div class="dashboard-card">
+
+        <div class="card-header">
+
+          <div>
+            <h2>Quick Actions</h2>
+            <p>Common automation operations</p>
+          </div>
+
+        </div>
+
+
+        <div class="quick-actions">
+
+          <div
+            class="action-item"
+            *ngFor="let action of quickActions"
+            [routerLink]="action.route">
+
+            <div class="action-icon">
+              {{ action.icon }}
+            </div>
+
+            <div class="action-content">
+              <h3>{{ action.title }}</h3>
+              <p>{{ action.description }}</p>
+            </div>
+
+            <span class="action-arrow">
+              →
+            </span>
+
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <!-- Recent Activity -->
+      <div class="dashboard-card">
+
+        <div class="card-header">
+
+          <div>
+            <h2>Recent Activity</h2>
+            <p>Latest automation executions</p>
+          </div>
+
+          <a
+            routerLink="/jobs"
+            class="view-all">
+
+            View All
+
+          </a>
+
+        </div>
+
+
+        <div class="activity-list">
+
+          <div
+            class="activity-item"
+            *ngFor="let activity of recentActivities">
+
+            <div class="activity-indicator"
+              [ngClass]="{
+                'completed': activity.status === 'Completed',
+                'running': activity.status === 'Running',
+                'failed': activity.status === 'Failed'
+              }">
+            </div>
+
+            <div class="activity-details">
+
+              <h3>
+                {{ activity.name }}
+              </h3>
+
+              <span>
+                {{ activity.time }}
+              </span>
+
+            </div>
+
+            <span
+              class="status"
+              [ngClass]="{
+                'status-completed': activity.status === 'Completed',
+                'status-running': activity.status === 'Running',
+                'status-failed': activity.status === 'Failed'
+              }">
+
+              {{ activity.status }}
+
+            </span>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- Bottom Banner -->
+    <section class="automation-banner">
+
+      <div class="banner-icon">
+        ⚡
+      </div>
+
+      <div class="banner-content">
+
+        <h2>
+          Automate your repetitive tasks
+        </h2>
+
+        <p>
+          Create workflows using reusable actions and execute
+          them automatically.
+        </p>
+
+      </div>
+
+      <button
+        class="banner-btn"
+        routerLink="/workflow">
+
+        Start Building →
+
+      </button>
+
+    </section>
+
+  </main>
+
+</div>
