@@ -302,3 +302,174 @@
   display: flex;
   gap: 6px;
 }
+
+
+
+.department-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.department-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.department-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.department-row:hover {
+  background: #f8fafc;
+}
+
+.department-main {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.expand-icon {
+  width: 20px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.department-name {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.department-description {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.department-meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.department-date {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.process-section {
+  border-top: 1px solid #e5e7eb;
+  background: #f8fafc;
+  padding: 16px 20px 20px 54px;
+}
+
+.process-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.process-header h4 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.process-count {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.process-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-top: 8px;
+}
+
+.process-info {
+  min-width: 0;
+}
+
+.process-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.process-description {
+  color: #64748b;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.process-details {
+  display: flex;
+  gap: 16px;
+  margin-top: 7px;
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.process-actions {
+  margin-left: 20px;
+}
+
+.empty-processes {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 30px;
+  color: #64748b;
+  text-align: center;
+}
+
+.empty-icon {
+  font-size: 24px;
+}
+
+.primary-btn.small,
+.secondary-btn.small,
+.danger-btn.small {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.modal-subtitle {
+  margin-bottom: 20px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.modal textarea {
+  min-height: 90px;
+  resize: vertical;
+  width: 100%;
+}
+
+.process-info-box {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 7px;
+  background: #eff6ff;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.5;
+}

@@ -11,7 +11,20 @@ interface NavItem {
   label: string;
   icon: string;
 }
+export interface Process {
+  id: string;
+  processName: string;
+  description: string;
+  createdAt: string;
+  modifiedAt: string;
 
+  department?: {
+    id: string;
+    departmentName: string;
+  };
+
+  usersCount?: number;
+}
 
 interface NavItem {
   key: PanelKey;
@@ -68,6 +81,197 @@ export class AdminPanel {
     { key: 'schedules', label: 'Schedules', icon: 'M7 2v2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2h-2V2h-2v2H9V2H7zm12 8H5v10h14V10z' },
     { key: 'history', label: 'History', icon: 'M13 3a9 9 0 100 18 9 9 0 000-18zm1 9V6h-2v7l5.2 3.1 1-1.6L14 12z' },
   ];
+expandedDepartmentId = signal<string | null>(null);
+
+departmentProcesses = signal<Record<string, Process[]>>({});
+
+processLoading = signal<Record<string, boolean>>({});
+
+processError = signal<Record<string, string>>({});
+
+showProcessModal = signal(false);
+
+processFormSubmitting = signal(false);
+
+processFormError = signal('');
+apiUrl = API_BASE;
+activeProcessDepartment = signal<any | null>(null);
+
+newProcess = {
+  processName: '',
+  description: ''
+};
+
+deleteProcessPendingId = signal<string | null>(null);
+
+toggleDepartment(department: any): void {
+  const currentId = this.expandedDepartmentId();
+
+  if (currentId === department.id) {
+    this.expandedDepartmentId.set(null);
+    return;
+  }
+
+  this.expandedDepartmentId.set(department.id);
+
+  // Only load if we haven't loaded them already
+  if (!this.departmentProcesses()[department.id]) {
+    this.loadProcesses(department.id);
+  }
+}
+
+loadProcesses(departmentId: string): void {
+  this.processLoading.update(state => ({
+    ...state,
+    [departmentId]: true
+  }));
+
+  this.processError.update(state => ({
+    ...state,
+    [departmentId]: ''
+  }));
+
+  this.http.post<Process[]>(
+    `${this.apiUrl}/Process/list`,
+    {
+      departmentId: departmentId
+    }
+  ).subscribe({
+    next: (processes) => {
+      this.departmentProcesses.update(state => ({
+        ...state,
+        [departmentId]: processes
+      }));
+
+      this.processLoading.update(state => ({
+        ...state,
+        [departmentId]: false
+      }));
+    },
+
+    error: (err) => {
+      this.processLoading.update(state => ({
+        ...state,
+        [departmentId]: false
+      }));
+
+      this.processError.update(state => ({
+        ...state,
+        [departmentId]: err?.error?.message || 'Failed to load processes.'
+      }));
+    }
+  });
+}
+
+openProcessModal(department: any): void {
+  this.activeProcessDepartment.set(department);
+
+  this.newProcess = {
+    processName: '',
+    description: ''
+  };
+
+  this.processFormError.set('');
+  this.showProcessModal.set(true);
+}
+
+closeProcessModal(): void {
+  this.showProcessModal.set(false);
+  this.activeProcessDepartment.set(null);
+  this.processFormError.set('');
+}
+
+submitNewProcess(): void {
+  const department = this.activeProcessDepartment();
+
+  if (!department) {
+    return;
+  }
+
+  if (!this.newProcess.processName.trim()) {
+    this.processFormError.set('Process name is required.');
+    return;
+  }
+
+  if (!this.newProcess.description.trim()) {
+    this.processFormError.set('Process description is required.');
+    return;
+  }
+
+  this.processFormSubmitting.set(true);
+  this.processFormError.set('');
+
+  const body = {
+    departmentId: department.id,
+    processName: this.newProcess.processName.trim(),
+    description: this.newProcess.description.trim()
+  };
+
+  this.http.post(
+    `${this.apiUrl}/Process`,
+    body
+  ).subscribe({
+    next: () => {
+
+      this.processFormSubmitting.set(false);
+
+      this.closeProcessModal();
+
+      // Reload processes for the department
+      this.loadProcesses(department.id);
+    },
+
+    error: (err) => {
+      this.processFormSubmitting.set(false);
+
+      this.processFormError.set(
+        err?.error?.message ||
+        'Failed to create process.'
+      );
+    }
+  });
+}
+
+
+deleteProcess(process: Process, departmentId: string): void {
+
+  const confirmed = confirm(
+    `Are you sure you want to delete "${process.processName}"?`
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  this.deleteProcessPendingId.set(process.id);
+
+  this.http.delete(
+    `${this.apiUrl}/Process/${process.id}`
+  ).subscribe({
+    next: () => {
+
+      this.deleteProcessPendingId.set(null);
+
+      // Remove immediately from UI
+      this.departmentProcesses.update(state => ({
+        ...state,
+        [departmentId]: (state[departmentId] || [])
+          .filter(p => p.id !== process.id)
+      }));
+    },
+
+    error: (err) => {
+
+      this.deleteProcessPendingId.set(null);
+
+      alert(
+        err?.error?.message ||
+        'Failed to delete process.'
+      );
+    }
+  });
+}
+
 
   readonly roleOptions = ROLE_OPTIONS;
 

@@ -31,5 +31,9 @@ public class Users
    // Navigation property
     public ICollection<UserDepartment> UserDepartments { get; set; }
         = new List<UserDepartment>();
+
+         // User -> Processes
+    public ICollection<UserProcess> UserProcesses { get; set; }
+        = new List<UserProcess>();
     
 }

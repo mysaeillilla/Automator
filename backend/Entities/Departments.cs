@@ -16,4 +16,8 @@ public class Departments
     public ICollection<UserDepartment> UserDepartments { get; set; }
         = new List<UserDepartment>();
 
+        // Processes belonging to department
+    public ICollection<Process> Processes { get; set; }
+        = new List<Process>();
+
 }
