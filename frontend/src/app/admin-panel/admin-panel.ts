@@ -417,6 +417,8 @@ deleteProcess(process: Process, departmentId: string): void {
 
     this.http.post<ApiUser>(`${API_BASE}/Auth/register`, payload).pipe(
       catchError(err => {
+        console.log(`${API_BASE}/Auth/register`);
+        console.log(err);
         this.userFormError.set(err?.error?.message ?? 'Failed to create user.');
         console.error('createUser error', err);
         return of(null);
@@ -424,6 +426,7 @@ deleteProcess(process: Process, departmentId: string): void {
     ).subscribe(result => {
       this.userFormSubmitting.set(false);
       if (result) {
+        console.log(result)
         this.showUserModal.set(false);
         this.retry('users'); // refresh the users list
       }

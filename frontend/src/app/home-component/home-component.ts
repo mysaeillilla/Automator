@@ -19,8 +19,18 @@ export class HomeComponent {
   ) {}
 
   ngOnInit(): void {
-    this.username.set(localStorage.getItem('username') || 'User');
+
+    const storedUsername = localStorage.getItem('username');
+
+    if (!storedUsername) {
+      this.router.navigate(['/login']);
+      return;
+    }
+
+    this.username.set(storedUsername);
   }
+
+  
 
   logout(): void {
     this.authService.logout();

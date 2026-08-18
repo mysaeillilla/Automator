@@ -8,8 +8,18 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AngularPolicy", policy =>
+    {
+        policy
+            .WithOrigins("http://localhost:4200", "https://localhost:4200")
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
 builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
@@ -17,34 +27,8 @@ builder.Services.AddSwaggerGen();
 
 
 
-// ── CORS ──────────────────────────────────────────────────────────────────────
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AngularPolicy", policy =>
-    {
-        policy
-            .WithOrigins(
-                "http://localhost:4200",    // Angular HTTP
-                "https://localhost:4200",   // Angular HTTPS
-                "http://localhost:5001",    // API HTTP  (self-referencing calls)
-                "https://localhost:5002")
-            .AllowAnyHeader()
-            .AllowAnyMethod()
-            .AllowCredentials();
-    });
-});
 
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AllowAngularApp", policy =>
-    {
-        policy
-            .WithOrigins("http://localhost:4200")
-            .AllowAnyHeader()
-            .AllowAnyMethod()
-            .AllowCredentials();
-    });
-});
+
 
 var jwtKey = builder.Configuration["Jwt:Key"]
     ?? throw new InvalidOperationException("Jwt:Key is not configured.");
@@ -83,17 +67,6 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
-
-app.UseHttpsRedirection();  // 1. redirect HTTP → HTTPS before anything else
-app.UseCors("AngularPolicy"); // 2. CORS headers added to every response
-
-app.UseCors("AllowAngularApp");
-app.UseAuthorization();
-
-app.MapControllers();
-
-
-
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -120,6 +93,21 @@ using (var scope = app.Services.CreateScope())
         db.SaveChanges();
     }
 }
+// app.UseHttpsRedirection();  // 1. redirect HTTP → HTTPS before anything else
+
+app.UseStaticFiles();
+
+app.UseRouting();
+
+app.UseCors("AngularPolicy"); // 2. CORS headers added to every response
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapControllers();
+
+
+
+
 
 
 

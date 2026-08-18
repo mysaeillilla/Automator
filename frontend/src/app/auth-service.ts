@@ -27,7 +27,7 @@ private readonly apiUrl = 'https://localhost:5002/api/auth'; // adjust to your A
   constructor(private http: HttpClient) {}
 
   login(request: LoginRequest): Observable<AuthResponse> {
-    return this.http.post<AuthResponse>(`${this.apiUrl}/login`, request).pipe(
+    return this.http.post<AuthResponse>(`${this.apiUrl}/login`, request,{withCredentials: true}).pipe(
       tap((res) => this.setSession(res))
     );
   }
