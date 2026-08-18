@@ -1,1 +1,178 @@
-<p>departments-component works!</p>
+
+
+
+<div class="admin-shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-dot"></span>
+
+      @if (isAdmin()) {
+        <span class="brand-text">Admin Panel</span>
+      } @else {
+        <span class="brand-text">Dashboard</span>
+      }
+    </div>
+
+    <nav class="nav-list">
+      @for (item of navItems; track item.key) {
+        <button
+          class="nav-item"
+          (click)="goToPanel(item.key)">
+          <svg viewBox="0 0 24 24" class="nav-icon"><path [attr.d]="item.icon"/></svg>
+          <span>{{ item.label }}</span>
+        </button>
+      }
+    </nav>
+  </aside>
+
+  <main class="content-panel">
+    <header class="content-header">
+      <div>
+        <button class="link-btn back-link" (click)="goBack()">← Back to Departments</button>
+
+        @if (department()) {
+          <h2>{{ department()!.departmentName }}</h2>
+          <p class="dept-description">{{ department()!.description }}</p>
+        }
+      </div>
+
+      @if (isAdmin()) {
+        <button class="primary-btn" (click)="openProcessModal()">+ Create Process</button>
+      }
+    </header>
+
+    <div class="content-body">
+      @if (loading()) {
+        <div class="state-message">Loading processes…</div>
+      } @else if (error()) {
+        <div class="state-message state-error">
+          {{ error() }}
+          <button class="retry-btn" (click)="retry()">Retry</button>
+        </div>
+      } @else {
+        @for (p of processes(); track p.id) {
+          <div class="process-row">
+            <div class="process-info">
+              @if (editingProcessId() === p.id) {
+                <input
+                  class="edit-name-input"
+                  type="text"
+                  [(ngModel)]="editProcessName"
+                  placeholder="Process name" />
+              } @else {
+                <div class="process-name">{{ p.processName }}</div>
+              }
+
+              <div class="process-description">{{ p.description }}</div>
+
+              <div class="process-details">
+                <span>{{ p.users?.length || 0 }} users</span>
+                <span>Created {{ p.createdAt | date:'MMM d, y' }}</span>
+              </div>
+
+              @if (p.users && p.users.length) {
+                <div class="process-users">
+                  @for (u of p.users; track u.id) {
+                    <span class="user-chip">
+                      {{ u.userName }}
+                      <span class="user-chip-role">{{ roleLabel(u.role) }}</span>
+                    </span>
+                  }
+                </div>
+              } @else {
+                <div class="process-users-empty">No users assigned to this process.</div>
+              }
+            </div>
+
+            @if (isAdmin()) {
+  <div class="process-actions">
+
+    @if (editingProcessId() === p.id) {
+      <button
+        class="primary-btn small"
+        (click)="saveProcessEdit(p)">
+        Save
+      </button>
+
+      <button
+        class="secondary-btn small"
+        (click)="cancelEditProcess()">
+        Cancel
+      </button>
+    } @else {
+
+      <button
+        class="trigger-btn small"
+        [disabled]="triggerProcessPendingId() === p.id"
+        (click)="triggerProcess(p)">
+        {{ triggerProcessPendingId() === p.id ? 'Triggering…' : '▶ Trigger' }}
+      </button>
+
+      <button
+        class="secondary-btn small"
+        (click)="startEditProcess(p)">
+        Edit
+      </button>
+
+      <button
+        class="danger-btn small"
+        [disabled]="deleteProcessPendingId() === p.id"
+        (click)="deleteProcess(p)">
+        {{ deleteProcessPendingId() === p.id ? 'Deleting…' : 'Delete' }}
+      </button>
+    }
+
+  </div>
+}
+
+          </div>
+        } @empty {
+          <div class="empty-processes">
+            <div class="empty-icon">⚙</div>
+            <div>No processes in this department.</div>
+            @if (isAdmin()) {
+              <button class="secondary-btn small" (click)="openProcessModal()">
+                Create your first process
+              </button>
+            }
+          </div>
+        }
+      }
+    </div>
+  </main>
+</div>
+
+<!-- Create Process modal -->
+@if (showProcessModal()) {
+  <div class="modal-backdrop" (click)="closeProcessModal()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <h3>Create Process</h3>
+
+      <label class="field">
+        <span>Process Name</span>
+        <input type="text" [(ngModel)]="newProcess.processName" placeholder="e.g. Invoice Processing" />
+      </label>
+
+      <label class="field">
+        <span>Description</span>
+        <textarea [(ngModel)]="newProcess.description" placeholder="Enter process description"></textarea>
+      </label>
+
+      <div class="process-info-box">
+        <span>ℹ</span>
+        <span>All users currently assigned to this department will automatically be assigned to this process.</span>
+      </div>
+
+      @if (processFormError()) {
+        <div class="form-error">{{ processFormError() }}</div>
+      }
+
+      <div class="modal-actions">
+        <button class="secondary-btn" (click)="closeProcessModal()">Cancel</button>
+        <button class="primary-btn" [disabled]="processFormSubmitting()" (click)="submitNewProcess()">
+          {{ processFormSubmitting() ? 'Creating…' : 'Create Process' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}

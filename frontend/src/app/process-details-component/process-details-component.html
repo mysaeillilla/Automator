@@ -1,0 +1,179 @@
+  <app-navbar-component />
+
+  <div class="admin-shell">
+
+  <aside class="sidebar">
+
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <span class="brand-text">Dashboard</span>
+    </div>
+
+    <nav class="nav-list">
+      @for (item of navItems; track item.key) {
+        <button
+          class="nav-item"
+          [class.active]="item.key === 'processes'"
+          (click)="goToPanel(item.key)">
+
+          <svg viewBox="0 0 24 24" class="nav-icon">
+            <path [attr.d]="item.icon"/>
+          </svg>
+
+          <span>{{ item.label }}</span>
+        </button>
+      }
+    </nav>
+
+  </aside>
+
+
+  <main class="content-panel">
+
+    <!-- Header -->
+    <header class="content-header">
+
+      <div>
+        <button
+          class="link-btn back-link"
+          (click)="goBack()">
+          ← Back to Dashboard
+        </button>
+
+        <h2>My Processes</h2>
+
+        <p class="dept-description">
+          Processes assigned to your account
+        </p>
+      </div>
+
+    </header>
+
+
+    <!-- Content -->
+    <div class="content-body">
+
+      @if (loading()) {
+
+        <div class="state-message">
+          Loading processes…
+        </div>
+
+      } @else if (error()) {
+
+        <div class="state-message state-error">
+
+          <span>{{ error() }}</span>
+
+          <button
+            class="retry-btn"
+            (click)="retry()">
+            Retry
+          </button>
+
+        </div>
+
+      } @else {
+
+        <!-- Process count -->
+        <div class="process-page-header">
+
+          <div>
+            <h3>Assigned Processes</h3>
+
+            <p>
+              {{ processes().length }}
+              {{ processes().length === 1 ? 'process' : 'processes' }}
+              assigned to you
+            </p>
+          </div>
+
+        </div>
+
+
+        <!-- Process List -->
+        <div class="process-list">
+
+          @for (process of processes(); track process.id) {
+
+            <div class="process-card">
+
+              <div class="process-card-main">
+
+                <!-- Process Icon -->
+                <div class="process-icon">
+                  ⚙
+                </div>
+
+
+                <!-- Process Information -->
+                <div class="process-info">
+
+                  <div class="process-name">
+                    {{ process.processName }}
+                  </div>
+
+                  <div class="process-description">
+                    {{ process.description || 'No description available.' }}
+                  </div>
+
+
+                  <div class="process-details">
+
+                    <span>
+                      🏢
+                      {{ process.department?.departmentName || 'No department' }}
+                    </span>
+
+                    <span>
+                      👥
+                      {{ process.usersCount }}
+                      {{ process.usersCount === 1 ? 'user' : 'users' }}
+                    </span>
+
+                    <span>
+                      Created
+                      {{ process.createdAt | date:'MMM d, y' }}
+                    </span>
+
+                  </div>
+
+                </div>
+
+
+                <!-- Arrow -->
+                <div class="process-arrow">
+                  →
+                </div>
+
+              </div>
+
+            </div>
+
+          } @empty {
+
+            <div class="empty-processes">
+
+              <div class="empty-icon">
+                ⚙
+              </div>
+
+              <h3>No Processes Assigned</h3>
+
+              <p>
+                You currently don't have any processes assigned to you.
+              </p>
+
+            </div>
+
+          }
+
+        </div>
+
+      }
+
+    </div>
+
+  </main>
+
+</div>

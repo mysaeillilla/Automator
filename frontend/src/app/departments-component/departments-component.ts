@@ -1,9 +1,302 @@
-import { Component } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { HttpClient } from '@angular/common/http';
+import { Component, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
+import { catchError, of } from 'rxjs';
+import { NavbarComponent } from "../navbar-component/navbar-component";
+
+interface ProcessUser {
+  id: string;
+  userName: string;
+  role: number;
+}
+
+interface Process {
+  id: string;
+  processName: string;
+  description: string;
+  createdAt: string;
+  modifiedAt?: string;
+  users: ProcessUser[];
+}
+
+interface ApiDepartment {
+  id: string;
+  departmentName: string;
+  description: string;
+  createdAt: string;
+  userCount: number;
+}
+
+interface DepartmentProcessesResponse {
+  departmentId: string;
+  departmentName: string;
+  processes: Process[];
+}
+
+type PanelKey = 'users' | 'department' | 'schedules' | 'history';
+
+interface NavItem {
+  key: PanelKey;
+  label: string;
+  icon: string;
+}
+
+const API_BASE = 'https://localhost:5002/api'; // match admin-panel's API_BASE / adjust port if needed
 
 @Component({
   selector: 'app-departments-component',
-  imports: [],
+  imports: [CommonModule, FormsModule, NavbarComponent],
   templateUrl: './departments-component.html',
   styleUrl: './departments-component.css',
 })
-export class DepartmentsComponent {}
+export class DepartmentsComponent {
+
+  private http = inject(HttpClient);
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+triggerProcessPendingId = signal<string | null>(null);
+triggerProcessError = signal<string | null>(null);
+  isAdmin = signal(localStorage.getItem('role') === 'Admin');
+// ===================== TRIGGER PROCESS =====================
+
+triggerProcess(process: Process): void {
+  const confirmed = confirm(
+    `Trigger process "${process.processName}"?`
+  );
+
+  if (!confirmed) return;
+
+  const token = localStorage.getItem("auth_token");
+
+  if (!token) {
+    this.triggerProcessError.set('Authentication token not found.');
+    return;
+  }
+
+  this.triggerProcessPendingId.set(process.id);
+  this.triggerProcessError.set(null);
+
+  this.http.post(
+    `${API_BASE}/Process/${process.id}/trigger`,
+    {},
+    {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  ).pipe(
+    catchError(err => {
+      console.log('Trigger process error:', err);
+
+      this.triggerProcessError.set(
+        err?.error?.message || 'Failed to trigger process.'
+      );
+
+      return of(null);
+    })
+  ).subscribe(result => {
+    this.triggerProcessPendingId.set(null);
+
+    if (result !== null) {
+      alert(`Process "${process.processName}" triggered successfully.`);
+    }
+  });
+}
+
+
+  readonly navItems: NavItem[] = [
+    { key: 'users', label: 'Users', icon: 'M12 12c2.7 0 8 1.34 8 4v2H4v-2c0-2.66 5.3-4 8-4zm0-2a4 4 0 100-8 4 4 0 000 8z' },
+    { key: 'department', label: 'Department', icon: 'M4 21V9l8-6 8 6v12h-6v-6H10v6H4z' },
+    { key: 'schedules', label: 'Schedules', icon: 'M7 2v2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2h-2V2h-2v2H9V2H7zm12 8H5v10h14V10z' },
+    { key: 'history', label: 'History', icon: 'M13 3a9 9 0 100 18 9 9 0 000-18zm1 9V6h-2v7l5.2 3.1 1-1.6L14 12z' },
+  ];
+
+  // Any sidebar click leaves this page and returns to the admin panel on that tab.
+  goToPanel(key: PanelKey): void {
+    this.router.navigate(['/admin'], { state: { selectedPanel: key } });
+  }
+
+  private roleLabels: Record<number, string> = { 0: 'Admin', 1: 'Developer', 2: 'Creator' };
+
+  roleLabel(role: number): string {
+    return this.roleLabels[role] ?? `Unknown (${role})`;
+  }
+
+  departmentId = signal<string>('');
+  department = signal<ApiDepartment | null>(null);
+
+  processes = signal<Process[]>([]);
+  loading = signal(false);
+  error = signal<string | null>(null);
+
+  // --- Create process modal ---
+  showProcessModal = signal(false);
+  newProcess = { processName: '', description: '' };
+  processFormError = signal('');
+  processFormSubmitting = signal(false);
+
+  // --- Dummy edit state ---
+  editingProcessId = signal<string | null>(null);
+  editProcessName = signal('');
+
+  // --- Dummy delete state ---
+  deleteProcessPendingId = signal<string | null>(null);
+
+  ngOnInit(): void {
+    const id = this.route.snapshot.paramMap.get('id');
+    if (!id) {
+      this.router.navigate(['/admin']);
+      return;
+    }
+    this.departmentId.set(id);
+
+    // Render instantly if we navigated here with state, no need to refetch
+    const navState = history.state as { department?: ApiDepartment };
+    if (navState?.department) {
+      this.department.set(navState.department);
+    } else {
+      this.fetchDepartment(id);
+    }
+
+    this.loadProcesses(id);
+  }
+
+  fetchDepartment(id: string): void {
+    this.http.get<ApiDepartment[]>(`${API_BASE}/Department`).pipe(
+      catchError(() => of([] as ApiDepartment[]))
+    ).subscribe(depts => {
+      const found = depts.find(d => d.id === id) ?? null;
+      this.department.set(found);
+    });
+  }
+
+  loadProcesses(departmentId: string): void {
+    this.loading.set(true);
+    this.error.set(null);
+
+    this.http.get<DepartmentProcessesResponse>(
+      `${API_BASE}/Process/department/${departmentId}`
+    ).pipe(
+      catchError(err => {
+        this.error.set(err?.error?.message || 'Failed to load processes.');
+        return of(null);
+      })
+    ).subscribe(result => {
+      this.processes.set(result?.processes ?? []);
+
+      // Keep department name/description fresh if we didn't get nav state
+      if (result?.departmentName && !this.department()) {
+        this.department.set({
+          id: result.departmentId,
+          departmentName: result.departmentName,
+          description: '',
+          createdAt: '',
+          userCount: 0,
+        });
+      }
+
+      this.loading.set(false);
+    });
+  }
+
+  retry(): void {
+    this.loadProcesses(this.departmentId());
+  }
+
+  goBack(): void {
+    this.router.navigate(['/admin']);
+  }
+
+  // ===================== CREATE PROCESS (real) =====================
+
+  openProcessModal(): void {
+    this.newProcess = { processName: '', description: '' };
+    this.processFormError.set('');
+    this.showProcessModal.set(true);
+  }
+
+  closeProcessModal(): void {
+    this.showProcessModal.set(false);
+    this.processFormError.set('');
+  }
+
+  submitNewProcess(): void {
+    if (!this.newProcess.processName.trim()) {
+      this.processFormError.set('Process name is required.');
+      return;
+    }
+    if (!this.newProcess.description.trim()) {
+      this.processFormError.set('Process description is required.');
+      return;
+    }
+
+    this.processFormSubmitting.set(true);
+    this.processFormError.set('');
+
+    const body = {
+      departmentId: this.departmentId(),
+      processName: this.newProcess.processName.trim(),
+      description: this.newProcess.description.trim(),
+    };
+
+    this.http.post(`${API_BASE}/Process`, body).pipe(
+      catchError(err => {
+        this.processFormError.set(err?.error?.message || 'Failed to create process.');
+        return of(null);
+      })
+    ).subscribe(result => {
+      this.processFormSubmitting.set(false);
+      if (result !== null) {
+        this.closeProcessModal();
+        this.loadProcesses(this.departmentId());
+      }
+    });
+  }
+
+  // ===================== EDIT PROCESS NAME (dummy) =====================
+  // TODO: wire this up to a real PATCH/PUT /api/Process/{id} endpoint once it exists.
+
+  startEditProcess(process: Process): void {
+    this.editingProcessId.set(process.id);
+    this.editProcessName.set(process.processName);
+  }
+
+  cancelEditProcess(): void {
+    this.editingProcessId.set(null);
+    this.editProcessName.set('');
+  }
+
+  saveProcessEdit(process: Process): void {
+    const newName = this.editProcessName().trim();
+    if (!newName) return;
+
+    // Dummy: update local state only, no API call yet.
+    console.log(`[dummy] would PATCH /Process/${process.id} with processName="${newName}"`);
+
+    this.processes.update(list =>
+      list.map(p => (p.id === process.id ? { ...p, processName: newName } : p))
+    );
+
+    this.cancelEditProcess();
+  }
+
+  // ===================== DELETE PROCESS (dummy) =====================
+  // TODO: wire this up to DELETE /api/Process/{id} once confirmed against the backend.
+
+  deleteProcess(process: Process): void {
+    const confirmed = confirm(`Delete process "${process.processName}"?`);
+    if (!confirmed) return;
+
+    this.deleteProcessPendingId.set(process.id);
+
+    // Dummy: remove from local state only, no API call yet.
+    console.log(`[dummy] would DELETE /Process/${process.id}`);
+
+    setTimeout(() => {
+      this.processes.update(list => list.filter(p => p.id !== process.id));
+      this.deleteProcessPendingId.set(null);
+    }, 300); // fake latency so the "Deleting…" state is visible
+  }
+}

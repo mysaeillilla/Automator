@@ -93,280 +93,44 @@
         }
 
         @case ('department') {
-
   @if (loading().department) {
-
-    <div class="state-message">
-      Loading departments…
-    </div>
-
+    <div class="state-message">Loading departments…</div>
   } @else if (error().department) {
-
     <div class="state-message state-error">
       {{ error().department }}
-
-      <button
-        class="retry-btn"
-        (click)="retry('department')">
-        Retry
-      </button>
+      <button class="retry-btn" (click)="retry('department')">Retry</button>
     </div>
-
   } @else {
-
-    @if (deleteUserError()) {
-      <div class="form-error">
-        {{ deleteUserError() }}
-      </div>
-    }
-
     <div class="department-list">
-
       @for (d of departments(); track d.id) {
-
         <div class="department-card">
-
-          <!-- Department Header -->
-          <div
-            class="department-row"
-            (click)="toggleDepartment(d)"
-          >
-
+          <div class="department-row" (click)="goToDepartment(d)">
             <div class="department-main">
-
-              <span class="expand-icon">
-                @if (expandedDepartmentId() === d.id) {
-                  ▼
-                } @else {
-                  ▶
-                }
-              </span>
-
+              <span class="expand-icon">▶</span>
               <div>
-                <div class="department-name">
-                  {{ d.departmentName }}
-                </div>
-
-                <div class="department-description">
-                  {{ d.description }}
-                </div>
+                <div class="department-name">{{ d.departmentName }}</div>
+                <div class="department-description">{{ d.description }}</div>
               </div>
-
             </div>
 
             <div class="department-meta">
-
-              <span class="badge">
-                {{ d.userCount }} Users
-              </span>
-
-              <span class="department-date">
-                {{ d.createdAt | date:'MMM d, y, h:mm a' }}
-              </span>
+              <span class="badge">{{ d.userCount }} Users</span>
+              <span class="department-date">{{ d.createdAt | date:'MMM d, y, h:mm a' }}</span>
 
               @if (isAdmin()) {
-
-                <button
-                  class="link-btn"
-                  (click)="$event.stopPropagation(); openMembersModal(d)">
+                <button class="link-btn" (click)="$event.stopPropagation(); openMembersModal(d)">
                   Manage users
                 </button>
-
               }
-
             </div>
-
           </div>
-
-
-          <!-- Expanded Department -->
-          @if (expandedDepartmentId() === d.id) {
-
-            <div class="process-section">
-
-              <div class="process-header">
-
-                <div>
-                  <h4>Processes</h4>
-
-                  <span class="process-count">
-                    {{
-                      (departmentProcesses()[d.id] || []).length
-                    }}
-                    processes
-                  </span>
-                </div>
-
-                @if (isAdmin()) {
-
-                  <button
-                    class="primary-btn small"
-                    (click)="openProcessModal(d)">
-                    + Create Process
-                  </button>
-
-                }
-
-              </div>
-
-
-              <!-- Loading -->
-              @if (processLoading()[d.id]) {
-
-                <div class="state-message">
-                  Loading processes…
-                </div>
-
-              }
-
-
-              <!-- Error -->
-              @else if (processError()[d.id]) {
-
-                <div class="state-message state-error">
-
-                  {{ processError()[d.id] }}
-
-                  <button
-                    class="retry-btn"
-                    (click)="loadProcesses(d.id)">
-                    Retry
-                  </button>
-
-                </div>
-
-              }
-
-
-              <!-- Process List -->
-              @else {
-
-                @for (
-                  p of (departmentProcesses()[d.id] || []);
-                  track p.id
-                ) {
-
-                  <div class="process-row">
-
-                    <div class="process-info">
-
-                      <div class="process-name">
-                        {{ p.processName }}
-                      </div>
-
-                      <div class="process-description">
-                        {{ p.description }}
-                      </div>
-
-                      <div class="process-details">
-
-                        <span>
-                          {{ p.usersCount || 0 }} users
-                        </span>
-
-                        <span>
-                          Created
-                          {{ p.createdAt | date:'MMM d, y' }}
-                        </span>
-
-                      </div>
-
-                    </div>
-
-
-                    @if (isAdmin()) {
-
-                      <div class="process-actions">
-
-                        <button
-                          class="danger-btn small"
-                          [disabled]="deleteProcessPendingId() === p.id"
-                          (click)="deleteProcess(p, d.id)">
-
-                          @if (deleteProcessPendingId() === p.id) {
-                            Deleting…
-                          } @else {
-                            Delete
-                          }
-
-                        </button>
-
-                      </div>
-
-                      <div class="process-actions">
-
-                        <button
-                          class="danger-btn small"
-                          >
-
-
-                   Run
-                        </button>
-
-                      </div><div class="process-actions">
-
-                        <button
-                          class="danger-btn small"
-                          >
-
-
-                   Schedule
-                        </button>
-
-                      </div>
-
-                    }
-
-                  </div>
-
-                } @empty {
-
-                  <div class="empty-processes">
-
-                    <div class="empty-icon">
-                      ⚙
-                    </div>
-
-                    <div>
-                      No processes in this department.
-                    </div>
-
-                    @if (isAdmin()) {
-
-                      <button
-                        class="secondary-btn small"
-                        (click)="openProcessModal(d)">
-                        Create your first process
-                      </button>
-
-                    }
-
-                  </div>
-
-                }
-
-              }
-
-            </div>
-
-          }
-
         </div>
-
       } @empty {
-
-        <div class="empty-cell">
-          No departments found.
-        </div>
-
+        <div class="empty-cell">No departments found.</div>
       }
-
     </div>
-
   }
-
 }
-
 
 
         @case ('schedules') {

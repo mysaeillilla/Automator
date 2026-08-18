@@ -3,6 +3,9 @@ import { HomeComponent } from './home-component/home-component';
 import { Login } from './login/login';
 import { UserManagement } from './user-management/user-management';
 import { AdminPanel } from './admin-panel/admin-panel';
+import { DepartmentsComponent } from './departments-component/departments-component';
+import { ProcessDetailsComponent } from './process-details-component/process-details-component';
+import { AuditlogComponent } from './auditlog-component/auditlog-component';
 
 export const routes: Routes = [
 
@@ -19,6 +22,12 @@ export const routes: Routes = [
   {path:'admin-panel',
     component:AdminPanel
   },
+{ path: 'admin', component: AdminPanel },
+  { path: 'admin/departments/:id', component: DepartmentsComponent },
+  { path: 'process/process-list', component: ProcessDetailsComponent },
+  { path: 'history', component: AuditlogComponent },
+
+
 
 
 

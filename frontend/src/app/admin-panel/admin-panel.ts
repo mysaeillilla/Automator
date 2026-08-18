@@ -4,6 +4,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { catchError, of } from 'rxjs';
 import { NavbarComponent } from "../navbar-component/navbar-component";
+import { Router } from '@angular/router';
 type PanelKey = 'users' | 'department' | 'schedules' | 'history';
 
 interface NavItem {
@@ -74,7 +75,7 @@ const API_BASE = 'https://localhost:5002/api';
 export class AdminPanel {
 
     private http = inject(HttpClient);
-
+  private router = inject(Router);
   readonly navItems: NavItem[] = [
     { key: 'users', label: 'Users', icon: 'M12 12c2.7 0 8 1.34 8 4v2H4v-2c0-2.66 5.3-4 8-4zm0-2a4 4 0 100-8 4 4 0 000 8z' },
     { key: 'department', label: 'Department', icon: 'M4 21V9l8-6 8 6v12h-6v-6H10v6H4z' },
@@ -432,7 +433,11 @@ deleteProcess(process: Process, departmentId: string): void {
       }
     });
   }
-
+ goToDepartment(dept: ApiDepartment): void {
+    this.router.navigate(['/admin/departments', dept.id], {
+      state: { department: dept } // lets the detail page render instantly without refetching
+    });
+  }
   // ===================== CREATE DEPARTMENT =====================
 
   openDeptModal() {

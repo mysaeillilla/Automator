@@ -7,7 +7,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 {
     
 
-
+public DbSet<ExecutionHistory> ExecutionHistories { get; set; }
      public DbSet<Users> Users => Set<Users>();
  public DbSet<Departments> Departments { get; set; }
  public DbSet<Process> Process { get; set; }

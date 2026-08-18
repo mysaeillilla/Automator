@@ -1,0 +1,410 @@
+.admin-shell {
+  display: flex;
+  min-height: 100vh;
+  background: #f3f5f8;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+
+/* =========================
+   Sidebar
+   ========================= */
+
+.sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  background: #ffffff;
+  border-right: 1px solid #dde2e7;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 12px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 20px;
+}
+
+.brand-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #2387d9;
+}
+
+.brand-text {
+  font-weight: 600;
+  color: #1c2733;
+  font-size: 15px;
+}
+
+.nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  color: #4b5563;
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.nav-item:hover {
+  background: #f3f5f8;
+  color: #1c2733;
+}
+
+.nav-item.active {
+  background: rgba(35, 135, 217, 0.1);
+  color: #2387d9;
+  font-weight: 600;
+}
+
+.nav-icon {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+
+/* =========================
+   Content
+   ========================= */
+
+.content-panel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.content-header {
+  padding: 20px 28px;
+  border-bottom: 1px solid #dde2e7;
+  background: #ffffff;
+}
+
+.content-header h2 {
+  margin: 8px 0 0;
+  font-size: 18px;
+  color: #1c2733;
+}
+
+.dept-description {
+  margin: 5px 0 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.back-link {
+  display: inline-block;
+  margin-bottom: 2px;
+}
+
+.content-body {
+  flex: 1;
+  overflow: auto;
+  padding: 24px 28px;
+}
+
+
+/* =========================
+   Page Header
+   ========================= */
+
+.process-page-header {
+  margin-bottom: 16px;
+}
+
+.process-page-header h3 {
+  margin: 0;
+  color: #1c2733;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.process-page-header p {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+
+/* =========================
+   Process List
+   ========================= */
+
+.process-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.process-card {
+  background: #ffffff;
+  border: 1px solid #dde2e7;
+  border-radius: 10px;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+
+.process-card:hover {
+  border-color: rgba(35, 135, 217, 0.35);
+  box-shadow: 0 5px 16px rgba(15, 23, 42, 0.06);
+  transform: translateY(-1px);
+}
+
+.process-card-main {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+}
+
+.process-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 9px;
+  background: rgba(35, 135, 217, 0.1);
+  color: #2387d9;
+  font-size: 19px;
+}
+
+.process-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.process-name {
+  color: #1c2733;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.process-description {
+  margin-top: 5px;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.process-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 9px;
+  color: #94a3b8;
+  font-size: 11.5px;
+}
+
+.process-details span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.process-arrow {
+  flex-shrink: 0;
+  color: #94a3b8;
+  font-size: 20px;
+  transition:
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.process-card:hover .process-arrow {
+  color: #2387d9;
+  transform: translateX(3px);
+}
+
+
+/* =========================
+   Loading / Error
+   ========================= */
+
+.state-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.state-error {
+  flex-direction: column;
+  gap: 12px;
+  color: #dc2626;
+}
+
+.retry-btn {
+  background: #ffffff;
+  color: #2387d9;
+  border: 1px solid #dde2e7;
+  padding: 7px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.retry-btn:hover {
+  background: #f3f5f8;
+}
+
+
+/* =========================
+   Empty State
+   ========================= */
+
+.empty-processes {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 260px;
+  padding: 30px;
+  background: #ffffff;
+  border: 1px solid #dde2e7;
+  border-radius: 10px;
+  color: #64748b;
+  text-align: center;
+}
+
+.empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  background: rgba(35, 135, 217, 0.1);
+  color: #2387d9;
+  font-size: 22px;
+}
+
+.empty-processes h3 {
+  margin: 0;
+  color: #1c2733;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.empty-processes p {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+
+/* =========================
+   Link Button
+   ========================= */
+
+.link-btn {
+  background: none;
+  border: none;
+  color: #2387d9;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.link-btn:hover {
+  text-decoration: underline;
+}
+
+
+/* =========================
+   Responsive
+   ========================= */
+
+@media (max-width: 768px) {
+
+  .sidebar {
+    width: 200px;
+  }
+
+  .content-header {
+    padding: 18px 20px;
+  }
+
+  .content-body {
+    padding: 20px;
+  }
+
+  .process-card-main {
+    padding: 16px;
+  }
+
+  .process-details {
+    gap: 8px 14px;
+  }
+}
+
+
+@media (max-width: 600px) {
+
+  .admin-shell {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #dde2e7;
+    padding: 10px;
+  }
+
+  .brand {
+    padding: 8px 10px 12px;
+  }
+
+  .nav-list {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+
+  .nav-item {
+    flex-shrink: 0;
+  }
+
+  .content-panel {
+    min-height: calc(100vh - 120px);
+  }
+
+  .content-body {
+    padding: 16px;
+  }
+
+  .process-card-main {
+    align-items: flex-start;
+  }
+
+  .process-arrow {
+    display: none;
+  }
+}
