@@ -524,7 +524,7 @@ select(key: PanelKey): void {
     });
   }
  goToDepartment(dept: ApiDepartment): void {
-    this.router.navigate(['/admin/departments', dept.id], {
+    this.router.navigate(['/departments', dept.id], {
       state: { department: dept } // lets the detail page render instantly without refetching
     });
   }

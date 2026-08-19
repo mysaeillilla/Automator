@@ -385,7 +385,7 @@ export class HomeComponent {
 
       this.showWorkflowModal.set(false);
       console.log(departmentId);
-      this.router.navigate(['/admin/departments', departmentId]);
+      this.router.navigate(['/departments', departmentId]);
     });
   }
 }

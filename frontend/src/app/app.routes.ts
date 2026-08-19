@@ -19,11 +19,11 @@ export const routes: Routes = [
   {path:'users',
     component:UserManagement
   },
-  {path:'admin-panel',
+  {path:'control-panel',
     component:AdminPanel
   },
 { path: 'admin', component: AdminPanel },
-  { path: 'admin/departments/:id', component: DepartmentsComponent },
+  { path: 'departments/:id', component: DepartmentsComponent },
   { path: 'process/process-list', component: ProcessDetailsComponent },
   { path: 'history', component: AuditlogComponent },
 
