@@ -6,6 +6,7 @@ import { AdminPanel } from './admin-panel/admin-panel';
 import { DepartmentsComponent } from './departments-component/departments-component';
 import { ProcessDetailsComponent } from './process-details-component/process-details-component';
 import { AuditlogComponent } from './auditlog-component/auditlog-component';
+import { Departments } from './departments/departments';
 
 export const routes: Routes = [
 
@@ -26,6 +27,7 @@ export const routes: Routes = [
   { path: 'departments/:id', component: DepartmentsComponent },
   { path: 'process/process-list', component: ProcessDetailsComponent },
   { path: 'history', component: AuditlogComponent },
+  { path: 'departments', component: Departments },
 
 
 

@@ -1,0 +1,411 @@
+<app-navbar-component />
+
+<div class="admin-shell">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+
+    <div class="brand">
+      <span class="brand-dot"></span>
+
+      <span class="brand-text">
+        {{ isAdmin() ? 'Admin Panel' : 'Dashboard' }}
+      </span>
+    </div>
+
+    <nav class="nav-list">
+
+      @for (item of navItems; track item.key) {
+
+        <button
+          type="button"
+          class="nav-item"
+          [class.active]="item.key === activePanel"
+          (click)="goToPanel(item.key)"
+        >
+
+          <svg
+            viewBox="0 0 24 24"
+            class="nav-icon"
+            aria-hidden="true"
+          >
+            <path [attr.d]="item.icon"></path>
+          </svg>
+
+          <span>{{ item.label }}</span>
+
+        </button>
+
+      }
+
+    </nav>
+
+  </aside>
+
+
+  <!-- Main -->
+  <main class="content-panel">
+
+    <header class="content-header">
+
+      <div class="header-titles">
+
+        <h2>Departments</h2>
+
+        <p class="dept-description">
+          Manage your organization's departments.
+        </p>
+
+      </div>
+
+
+      <div class="header-actions">
+
+        <button
+          type="button"
+          class="secondary-btn"
+          [disabled]="loading()"
+          (click)="loadDepartments()"
+        >
+          {{ loading() ? 'Loading...' : 'Refresh' }}
+        </button>
+
+
+        @if (isAdmin()) {
+
+          <button
+            type="button"
+            class="primary-btn"
+            (click)="openDeptModal()"
+          >
+            + Add Department
+          </button>
+
+        }
+
+      </div>
+
+    </header>
+
+
+    <div class="content-body">
+
+      @if (error()) {
+
+        <div class="state-message state-error">
+
+          <span>{{ error() }}</span>
+
+          <button
+            type="button"
+            class="retry-btn"
+            (click)="retry()"
+          >
+            Retry
+          </button>
+
+        </div>
+
+      }
+
+      @else if (loading()) {
+
+        <div class="state-message">
+          Loading departments...
+        </div>
+
+      }
+
+      @else if (departments().length === 0) {
+
+        <div class="empty-processes">
+
+          <div class="empty-icon">
+            🏢
+          </div>
+
+          <div>
+            No departments found.
+          </div>
+
+          @if (isAdmin()) {
+
+            <button
+              type="button"
+              class="primary-btn"
+              (click)="openDeptModal()"
+            >
+              + Create your first department
+            </button>
+
+          }
+
+        </div>
+
+      }
+
+      @else {
+
+        <div class="department-table-wrapper">
+
+          <table class="department-table">
+
+            <thead>
+
+              <tr>
+                <th>Department</th>
+                <th>Description</th>
+                <th>Users</th>
+                <th>Created At</th>
+                <th>Actions</th>
+              </tr>
+
+            </thead>
+
+            <tbody>
+
+              @for (
+                department of departments();
+                track department.id
+              ) {
+
+                <tr>
+
+                  <td>
+                    <a
+                      class="department-link"
+                      [routerLink]="[
+                        '/departments',
+                        department.id
+                      ]"
+                    >
+                      <div class="department-name">
+                        {{ department.departmentName }}
+                      </div>
+                    </a>
+                  </td>
+
+
+                  <td>
+                    <a
+                      class="department-link"
+                      [routerLink]="[
+                        '/departments',
+                        department.id
+                      ]"
+                    >
+                      <div class="department-description">
+                        {{ department.description || '—' }}
+                      </div>
+                    </a>
+                  </td>
+
+
+                  <td>
+                    <a
+                      class="department-link"
+                      [routerLink]="[
+                        '/departments',
+                        department.id
+                      ]"
+                    >
+                      <span class="user-count">
+                        {{ department.userCount }}
+                      </span>
+                    </a>
+                  </td>
+
+
+                  <td>
+                    <a
+                      class="department-link"
+                      [routerLink]="[
+                        '/departments',
+                        department.id
+                      ]"
+                    >
+                      {{
+                        department.createdAt
+                          | date:'MMM d, y, h:mm a'
+                      }}
+                    </a>
+                  </td>
+
+
+                  <td class="actions-cell">
+
+                    <button
+                      type="button"
+                      class="delete-btn"
+                      [disabled]="
+                        deletingDepartmentId() ===
+                        department.id
+                      "
+                      (click)="
+                        deleteDepartment(
+                          department.id,
+                          $event
+                        )
+                      "
+                    >
+
+                      @if (
+                        deletingDepartmentId() ===
+                        department.id
+                      ) {
+                        Deleting...
+                      } @else {
+                        Delete
+                      }
+
+                    </button>
+
+                  </td>
+
+                </tr>
+
+              }
+
+            </tbody>
+
+          </table>
+
+        </div>
+
+      }
+
+    </div>
+
+  </main>
+
+</div>
+
+
+<!-- ========================================================= -->
+<!-- CREATE DEPARTMENT MODAL                                  -->
+<!-- ========================================================= -->
+
+@if (showDeptModal()) {
+
+  <div
+    class="modal-backdrop"
+    role="presentation"
+    (click)="onModalBackdropClick($event)"
+  >
+
+    <div
+      class="modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="addDepartmentTitle"
+    >
+
+      <div class="modal-header">
+
+        <div>
+          <h3 id="addDepartmentTitle">
+            Add Department
+          </h3>
+
+          <p>
+            Create a new department for your organization.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          class="modal-close"
+          [disabled]="deptFormSubmitting()"
+          (click)="closeDeptModal()"
+          aria-label="Close"
+        >
+          ×
+        </button>
+
+      </div>
+
+
+      <form
+        class="department-form"
+        (ngSubmit)="submitNewDepartment()"
+      >
+
+        <label class="field">
+
+          <span>
+            Department Name
+            <strong>*</strong>
+          </span>
+
+          <input
+            type="text"
+            name="departmentName"
+            [(ngModel)]="newDept.departmentName"
+            placeholder="e.g. Finance"
+            autocomplete="off"
+            [disabled]="deptFormSubmitting()"
+            required
+          />
+
+        </label>
+
+
+        <label class="field">
+
+          <span>Description</span>
+
+          <textarea
+            name="description"
+            [(ngModel)]="newDept.description"
+            placeholder="e.g. Finance Department"
+            rows="3"
+            [disabled]="deptFormSubmitting()"
+          ></textarea>
+
+        </label>
+
+
+        @if (deptFormError()) {
+
+          <div
+            class="form-error"
+            role="alert"
+          >
+            {{ deptFormError() }}
+          </div>
+
+        }
+
+
+        <div class="modal-actions">
+
+          <button
+            type="button"
+            class="secondary-btn"
+            [disabled]="deptFormSubmitting()"
+            (click)="closeDeptModal()"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="submit"
+            class="primary-btn"
+            [disabled]="deptFormSubmitting()"
+          >
+            {{
+              deptFormSubmitting()
+                ? 'Creating...'
+                : 'Create Department'
+            }}
+          </button>
+
+        </div>
+
+      </form>
+
+    </div>
+
+  </div>
+
+}
