@@ -13,6 +13,7 @@
       </span>
     </div>
 
+
     <nav class="nav-list">
 
       @for (item of navItems; track item.key) {
@@ -20,8 +21,8 @@
         <button
           type="button"
           class="nav-item"
-          [class.active]="item.key === activePanel"
-          (click)="goToPanel(item.key)"
+          [class.active]="item.key === 'department'"
+          (click)="select(item.key)"
         >
 
           <svg
@@ -90,11 +91,14 @@
 
     <div class="content-body">
 
+      <!-- Error -->
       @if (error()) {
 
         <div class="state-message state-error">
 
-          <span>{{ error() }}</span>
+          <span>
+            {{ error() }}
+          </span>
 
           <button
             type="button"
@@ -108,6 +112,7 @@
 
       }
 
+      <!-- Loading -->
       @else if (loading()) {
 
         <div class="state-message">
@@ -116,6 +121,7 @@
 
       }
 
+      <!-- Empty -->
       @else if (departments().length === 0) {
 
         <div class="empty-processes">
@@ -127,6 +133,7 @@
           <div>
             No departments found.
           </div>
+
 
           @if (isAdmin()) {
 
@@ -144,6 +151,7 @@
 
       }
 
+      <!-- Departments -->
       @else {
 
         <div class="department-table-wrapper">
@@ -162,6 +170,7 @@
 
             </thead>
 
+
             <tbody>
 
               @for (
@@ -171,7 +180,9 @@
 
                 <tr>
 
+                  <!-- Department -->
                   <td>
+
                     <a
                       class="department-link"
                       [routerLink]="[
@@ -179,14 +190,19 @@
                         department.id
                       ]"
                     >
+
                       <div class="department-name">
                         {{ department.departmentName }}
                       </div>
+
                     </a>
+
                   </td>
 
 
+                  <!-- Description -->
                   <td>
+
                     <a
                       class="department-link"
                       [routerLink]="[
@@ -194,14 +210,19 @@
                         department.id
                       ]"
                     >
+
                       <div class="department-description">
                         {{ department.description || '—' }}
                       </div>
+
                     </a>
+
                   </td>
 
 
+                  <!-- Users -->
                   <td>
+
                     <a
                       class="department-link"
                       [routerLink]="[
@@ -209,14 +230,19 @@
                         department.id
                       ]"
                     >
+
                       <span class="user-count">
                         {{ department.userCount }}
                       </span>
+
                     </a>
+
                   </td>
 
 
+                  <!-- Created At -->
                   <td>
+
                     <a
                       class="department-link"
                       [routerLink]="[
@@ -224,41 +250,53 @@
                         department.id
                       ]"
                     >
+
                       {{
                         department.createdAt
                           | date:'MMM d, y, h:mm a'
                       }}
+
                     </a>
+
                   </td>
 
 
+                  <!-- Actions -->
                   <td class="actions-cell">
 
-                    <button
-                      type="button"
-                      class="delete-btn"
-                      [disabled]="
-                        deletingDepartmentId() ===
-                        department.id
-                      "
-                      (click)="
-                        deleteDepartment(
-                          department.id,
-                          $event
-                        )
-                      "
-                    >
+                    @if (isAdmin()) {
 
-                      @if (
-                        deletingDepartmentId() ===
-                        department.id
-                      ) {
-                        Deleting...
-                      } @else {
-                        Delete
-                      }
+                      <button
+                        type="button"
+                        class="delete-btn"
+                        [disabled]="
+                          deletingDepartmentId() ===
+                          department.id
+                        "
+                        (click)="
+                          deleteDepartment(
+                            department.id,
+                            $event
+                          )
+                        "
+                      >
 
-                    </button>
+                        @if (
+                          deletingDepartmentId() ===
+                          department.id
+                        ) {
+
+                          Deleting...
+
+                        } @else {
+
+                          Delete
+
+                        }
+
+                      </button>
+
+                    }
 
                   </td>
 
@@ -298,11 +336,13 @@
       role="dialog"
       aria-modal="true"
       aria-labelledby="addDepartmentTitle"
+      (click)="$event.stopPropagation()"
     >
 
       <div class="modal-header">
 
         <div>
+
           <h3 id="addDepartmentTitle">
             Add Department
           </h3>
@@ -310,7 +350,9 @@
           <p>
             Create a new department for your organization.
           </p>
+
         </div>
+
 
         <button
           type="button"
@@ -352,7 +394,9 @@
 
         <label class="field">
 
-          <span>Description</span>
+          <span>
+            Description
+          </span>
 
           <textarea
             name="description"
@@ -388,16 +432,19 @@
             Cancel
           </button>
 
+
           <button
             type="submit"
             class="primary-btn"
             [disabled]="deptFormSubmitting()"
           >
+
             {{
               deptFormSubmitting()
                 ? 'Creating...'
                 : 'Create Department'
             }}
+
           </button>
 
         </div>

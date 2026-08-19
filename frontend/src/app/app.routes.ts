@@ -7,6 +7,7 @@ import { DepartmentsComponent } from './departments-component/departments-compon
 import { ProcessDetailsComponent } from './process-details-component/process-details-component';
 import { AuditlogComponent } from './auditlog-component/auditlog-component';
 import { Departments } from './departments/departments';
+import { SchedulesComponent } from './schedules-component/schedules-component';
 
 export const routes: Routes = [
 
@@ -28,6 +29,7 @@ export const routes: Routes = [
   { path: 'process/process-list', component: ProcessDetailsComponent },
   { path: 'history', component: AuditlogComponent },
   { path: 'departments', component: Departments },
+  { path: 'schedules', component: SchedulesComponent },
 
 
 

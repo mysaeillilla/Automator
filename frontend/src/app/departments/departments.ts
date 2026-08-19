@@ -6,10 +6,8 @@ import { Router, RouterLink } from '@angular/router';
 import { catchError, finalize, of } from 'rxjs';
 import { NavbarComponent } from '../navbar-component/navbar-component';
 
-type PanelKey = 'users' | 'department' | 'schedules' | 'history';
-
 interface NavItem {
-  key: PanelKey;
+  key: string;
   label: string;
   icon: string;
 }
@@ -35,8 +33,7 @@ const API_BASE = 'http://localhost:5001/api';
   imports: [
     CommonModule,
     NavbarComponent,
-    RouterLink,
-    FormsModule
+    FormsModule,RouterLink
   ],
   templateUrl: './departments.html',
   styleUrl: './departments.css'
@@ -45,8 +42,6 @@ export class Departments implements OnInit {
 
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
-
-  readonly Math = Math;
 
   // =========================================================
   // Admin
@@ -68,8 +63,6 @@ export class Departments implements OnInit {
   // =========================================================
   // Navigation
   // =========================================================
-
-  readonly activePanel: PanelKey = 'department';
 
   readonly navItems: NavItem[] = [
     {
@@ -94,12 +87,30 @@ export class Departments implements OnInit {
     }
   ];
 
-  goToPanel(key: PanelKey): void {
-    this.router.navigate(['/admin'], {
-      state: {
-        selectedPanel: key
-      }
-    });
+  /**
+   * Navigate between application sections.
+   *
+   * Each section is now handled by its own route/component.
+   */
+  select(key: string): void {
+    switch (key) {
+
+      case 'users':
+        this.router.navigate(['/admin']);
+        break;
+
+      case 'department':
+        this.router.navigate(['/department']);
+        break;
+
+      case 'schedules':
+        this.router.navigate(['/schedules']);
+        break;
+
+      case 'history':
+        this.router.navigate(['/history']);
+        break;
+    }
   }
 
   // =========================================================
@@ -109,14 +120,24 @@ export class Departments implements OnInit {
   departments = signal<Department[]>([]);
 
   loading = signal(false);
+
   error = signal<string | null>(null);
+
+  // =========================================================
+  // Lifecycle
+  // =========================================================
 
   ngOnInit(): void {
     this.refreshAdminStatus();
     this.loadDepartments();
   }
 
+  // =========================================================
+  // Authentication
+  // =========================================================
+
   private getAuthHeaders(): HttpHeaders {
+
     const token = localStorage.getItem('auth_token');
 
     let headers = new HttpHeaders({
@@ -134,10 +155,11 @@ export class Departments implements OnInit {
   }
 
   // =========================================================
-  // Load
+  // Load departments
   // =========================================================
 
   loadDepartments(): void {
+
     this.loading.set(true);
     this.error.set(null);
 
@@ -150,6 +172,7 @@ export class Departments implements OnInit {
       )
       .pipe(
         catchError(err => {
+
           console.error(
             'Failed to load departments:',
             err
@@ -157,11 +180,13 @@ export class Departments implements OnInit {
 
           this.error.set(
             err?.error?.message ||
+            err?.error?.title ||
             'Failed to load departments.'
           );
 
           return of([] as Department[]);
         }),
+
         finalize(() => {
           this.loading.set(false);
         })
@@ -187,7 +212,6 @@ export class Departments implements OnInit {
   };
 
   openDeptModal(): void {
-    console.log('Opening department modal');
 
     this.newDept = {
       departmentName: '',
@@ -195,25 +219,30 @@ export class Departments implements OnInit {
     };
 
     this.deptFormError.set(null);
+
     this.showDeptModal.set(true);
   }
 
   closeDeptModal(): void {
+
     if (this.deptFormSubmitting()) {
       return;
     }
 
     this.showDeptModal.set(false);
+
     this.deptFormError.set(null);
   }
 
   onModalBackdropClick(event: MouseEvent): void {
+
     if (event.target === event.currentTarget) {
       this.closeDeptModal();
     }
   }
 
   submitNewDepartment(): void {
+
     if (this.deptFormSubmitting()) {
       return;
     }
@@ -224,36 +253,53 @@ export class Departments implements OnInit {
     const description =
       this.newDept.description?.trim() ?? '';
 
+    // ---------------------------------------------------------
     // Validation
+    // ---------------------------------------------------------
+
     if (!departmentName) {
+
       this.deptFormError.set(
         'Department name is required.'
       );
+
       return;
     }
 
     if (departmentName.length > 100) {
+
       this.deptFormError.set(
         'Department name cannot exceed 100 characters.'
       );
+
       return;
     }
 
+    // ---------------------------------------------------------
     // Duplicate check
-    const duplicate = this.departments().some(
-      department =>
-        department.departmentName
-          .trim()
-          .toLowerCase() ===
-        departmentName.toLowerCase()
-    );
+    // ---------------------------------------------------------
+
+    const duplicate =
+      this.departments().some(
+        department =>
+          department.departmentName
+            .trim()
+            .toLowerCase() ===
+          departmentName.toLowerCase()
+      );
 
     if (duplicate) {
+
       this.deptFormError.set(
         'A department with this name already exists.'
       );
+
       return;
     }
+
+    // ---------------------------------------------------------
+    // Submit
+    // ---------------------------------------------------------
 
     this.deptFormSubmitting.set(true);
     this.deptFormError.set(null);
@@ -264,6 +310,7 @@ export class Departments implements OnInit {
     )
       .pipe(
         catchError(err => {
+
           console.error(
             'Failed to create department:',
             err
@@ -277,6 +324,7 @@ export class Departments implements OnInit {
 
           return of(null);
         }),
+
         finalize(() => {
           this.deptFormSubmitting.set(false);
         })
@@ -287,12 +335,9 @@ export class Departments implements OnInit {
           return;
         }
 
-        this.departments.update(
-          departments => [
-            ...departments,
-            result
-          ]
-        );
+        // Refresh from API so userCount/createdAt/etc.
+        // are guaranteed to be current.
+        this.loadDepartments();
 
         this.showDeptModal.set(false);
 
@@ -307,6 +352,7 @@ export class Departments implements OnInit {
     departmentName: string,
     description: string
   ) {
+
     return this.http.post<Department>(
       `${API_BASE}/Department`,
       {
@@ -320,7 +366,7 @@ export class Departments implements OnInit {
   }
 
   // =========================================================
-  // Delete
+  // Delete department
   // =========================================================
 
   deletingDepartmentId =
@@ -347,11 +393,11 @@ export class Departments implements OnInit {
       department?.departmentName ||
       'this department';
 
-    if (
-      !confirm(
-        `Are you sure you want to delete "${name}"?`
-      )
-    ) {
+    const confirmed = confirm(
+      `Are you sure you want to delete "${name}"?`
+    );
+
+    if (!confirmed) {
       return;
     }
 
@@ -367,7 +413,9 @@ export class Departments implements OnInit {
         }
       )
       .pipe(
+
         catchError(err => {
+
           console.error(
             'Failed to delete department:',
             err
@@ -375,20 +423,22 @@ export class Departments implements OnInit {
 
           this.error.set(
             err?.error?.message ||
+            err?.error?.title ||
             'Failed to delete department.'
           );
 
           return of(null);
         }),
+
         finalize(() => {
           this.deletingDepartmentId.set(null);
         })
+
       )
       .subscribe(result => {
 
-        // If the request did not error,
-        // remove it from the UI.
         if (result !== null) {
+
           this.departments.update(
             departments =>
               departments.filter(
@@ -399,6 +449,10 @@ export class Departments implements OnInit {
         }
       });
   }
+
+  // =========================================================
+  // Retry
+  // =========================================================
 
   retry(): void {
     this.loadDepartments();

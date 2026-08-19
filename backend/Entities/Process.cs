@@ -24,6 +24,9 @@ public class Process
     // Users assigned to this process
     public ICollection<UserProcess> UserProcesses { get; set; }
         = new List<UserProcess>();
+ // Schedules for this process
+    public ICollection<Schedules> Schedules { get; set; }
+        = new List<Schedules>();
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

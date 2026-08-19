@@ -6,7 +6,7 @@ namespace backend.Data;
 public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : DbContext(options)
 {
     
-
+public DbSet<Schedules> Schedules { get; set; }
 public DbSet<ExecutionHistory> ExecutionHistories { get; set; }
      public DbSet<Users> Users => Set<Users>();
  public DbSet<Departments> Departments { get; set; }
@@ -93,6 +93,20 @@ modelBuilder.Entity<UserProcess>()
         .WithMany(x => x.UserDepartments)
         .HasForeignKey(x => x.DepartmentId)
         .OnDelete(DeleteBehavior.Cascade);
+modelBuilder.Entity<Schedules>()
+    .HasOne(s => s.Process)
+    .WithMany(p => p.Schedules)
+    .HasForeignKey(s => s.ProcessId)
+    .OnDelete(DeleteBehavior.Cascade);
+
+
+    modelBuilder.Entity<Process>()
+    .HasOne(p => p.Department)
+    .WithMany(d => d.Processes)
+    .HasForeignKey(p => p.DepartmentId)
+    .OnDelete(DeleteBehavior.Cascade);
+
+
 
     modelBuilder.Entity<UserDepartment>()
         .HasIndex(x => new

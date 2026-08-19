@@ -169,46 +169,55 @@ public async Task<IActionResult> GetAllProcesses()
 
 
     [HttpGet("department/{departmentId}")]
-    public async Task<IActionResult> GetProcessesByDepartment(Guid departmentId)
+public async Task<IActionResult> GetProcessesByDepartment(string departmentId)
+{
+
+    Console.WriteLine(departmentId);
+    
+    if (!Guid.TryParse(departmentId, out Guid departmentGuid))
     {
-        var department = await _context.Departments
-            .FirstOrDefaultAsync(d => d.Id == departmentId);
-
-        if (department == null)
-        {
-            return NotFound(new { message = "Department not found." });
-        }
-
-        var processes = await _context.Process
-            .Include(p => p.UserProcesses)
-                .ThenInclude(up => up.User)
-            .Where(p => p.DepartmentId == departmentId)
-            .OrderBy(p => p.ProcessName)
-            .Select(p => new
-            {
-                p.Id,
-                p.ProcessName,
-                p.Description,
-                p.processPath,
-                p.CreatedAt,
-                p.ModifiedAt,
-
-                Users = p.UserProcesses.Select(up => new
-                {
-                    up.User.Id,
-                    up.User.UserName,
-                    up.User.Role
-                })
-            })
-            .ToListAsync();
-
-        return Ok(new
-        {
-            departmentId = department.Id,
-            departmentName = department.DepartmentName,
-            processes
-        });
+        return BadRequest(new { message = "Invalid department ID." });
     }
+
+    var department = await _context.Departments
+        .FirstOrDefaultAsync(d => d.Id == departmentGuid);
+
+    if (department == null)
+    {
+        return NotFound(new { message = "Department not found." });
+    }
+
+    var processes = await _context.Process
+        .Include(p => p.UserProcesses)
+            .ThenInclude(up => up.User)
+        .Where(p => p.DepartmentId == departmentGuid)
+        .OrderBy(p => p.ProcessName)
+        .Select(p => new
+        {
+            p.Id,
+            p.ProcessName,
+            p.Description,
+            p.processPath,
+            p.CreatedAt,
+            p.ModifiedAt,
+
+            Users = p.UserProcesses.Select(up => new
+            {
+                up.User.Id,
+                up.User.UserName,
+                up.User.Role
+            })
+        })
+        .ToListAsync();
+
+    return Ok(new
+    {
+        departmentId = department.Id,
+        departmentName = department.DepartmentName,
+        processes
+    });
+}
+
 
     [Authorize(Roles = "Admin")]
     [HttpPost]

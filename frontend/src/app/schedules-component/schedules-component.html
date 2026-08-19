@@ -1,1 +1,495 @@
-<p>schedules-component works!</p>
+<app-navbar-component />
+
+<div class="admin-shell">
+
+  <!-- ===================================================== -->
+  <!-- SIDEBAR -->
+  <!-- ===================================================== -->
+
+  <aside class="sidebar">
+
+    <div class="brand">
+
+      <span class="brand-dot"></span>
+
+      <span class="brand-text">
+        {{ isAdmin() ? 'Admin Panel' : 'Dashboard' }}
+      </span>
+
+    </div>
+
+    <nav class="nav-list">
+
+      @for (item of navItems; track item.key) {
+
+        <button
+          type="button"
+          class="nav-item"
+          [class.active]="item.key === 'schedules'"
+          (click)="select(item.key)"
+        >
+
+          <svg
+            viewBox="0 0 24 24"
+            class="nav-icon"
+            aria-hidden="true"
+          >
+            <path [attr.d]="item.icon"></path>
+          </svg>
+
+          <span>
+            {{ item.label }}
+          </span>
+
+        </button>
+
+      }
+
+    </nav>
+
+  </aside>
+
+
+  <!-- ===================================================== -->
+  <!-- MAIN CONTENT -->
+  <!-- ===================================================== -->
+
+  <main class="content-panel">
+
+    <header class="content-header">
+
+      <div class="header-titles">
+
+        <h2>Schedules</h2>
+
+        <p class="dept-description">
+          View and manage scheduled processes.
+        </p>
+
+      </div>
+
+      <div class="header-actions">
+
+        <button
+          type="button"
+          class="secondary-btn"
+          [disabled]="loading()"
+          (click)="loadSchedules()"
+        >
+          {{ loading() ? 'Loading...' : 'Refresh' }}
+        </button>
+
+      </div>
+
+    </header>
+
+
+    <!-- =================================================== -->
+    <!-- CREATE SCHEDULE -->
+    <!-- =================================================== -->
+
+    <section class="create-schedule-card">
+
+      <div class="section-header">
+
+        <div>
+          <h3>Create Schedule</h3>
+
+          <p>
+            Add a new scheduled process.
+          </p>
+        </div>
+
+      </div>
+
+
+      @if (createSuccess()) {
+
+        <div class="success-message">
+          {{ createSuccess() }}
+        </div>
+
+      }
+
+
+      @if (createError()) {
+
+        <div class="state-message state-error">
+          {{ createError() }}
+        </div>
+
+      }
+
+
+      <form
+        class="schedule-form"
+        [formGroup]="scheduleForm"
+        (ngSubmit)="createSchedule()"
+      >
+
+        <!-- Schedule Name -->
+        <div class="form-field">
+
+          <label for="scheduleName">
+            Schedule Name
+          </label>
+
+          <input
+            id="scheduleName"
+            type="text"
+            formControlName="scheduleName"
+            placeholder="Daily payroll"
+          />
+
+          @if (
+            scheduleForm.controls.scheduleName.touched &&
+            scheduleForm.controls.scheduleName.invalid
+          ) {
+            <small class="field-error">
+              Schedule name is required.
+            </small>
+          }
+
+        </div>
+
+
+        <!-- Process ID -->
+        <div class="form-field">
+
+          <label for="processId">
+            Process ID
+          </label>
+
+          <input
+            id="processId"
+            type="text"
+            formControlName="processId"
+            placeholder="3fa85f64-5717-4562-b3fc-2c963f66afa6"
+          />
+
+          @if (
+            scheduleForm.controls.processId.touched &&
+            scheduleForm.controls.processId.invalid
+          ) {
+            <small class="field-error">
+              Enter a valid process ID.
+            </small>
+          }
+
+        </div>
+
+
+        <!-- Time -->
+        <div class="form-field">
+
+          <label for="time">
+            Time
+          </label>
+
+          <input
+            id="time"
+            type="time"
+            formControlName="time"
+          />
+
+          @if (
+            scheduleForm.controls.time.touched &&
+            scheduleForm.controls.time.invalid
+          ) {
+            <small class="field-error">
+              Time is required.
+            </small>
+          }
+
+        </div>
+
+
+        <!-- Frequency -->
+        <div class="form-field">
+
+          <label for="frequency">
+            Frequency
+          </label>
+
+          <select
+            id="frequency"
+            formControlName="frequency"
+          >
+
+            <option value="">
+              Select frequency
+            </option>
+
+            <option value="Once">
+              Once
+            </option>
+
+            <option value="Daily">
+              Daily
+            </option>
+
+            <option value="Weekly">
+              Weekly
+            </option>
+
+            <option value="Monthly">
+              Monthly
+            </option>
+
+          </select>
+
+          @if (
+            scheduleForm.controls.frequency.touched &&
+            scheduleForm.controls.frequency.invalid
+          ) {
+            <small class="field-error">
+              Frequency is required.
+            </small>
+          }
+
+        </div>
+
+
+        <!-- Next Run -->
+        <div class="form-field">
+
+          <label for="nextRun">
+            Next Run
+          </label>
+
+          <input
+            id="nextRun"
+            type="datetime-local"
+            formControlName="nextRun"
+          />
+
+          @if (
+            scheduleForm.controls.nextRun.touched &&
+            scheduleForm.controls.nextRun.invalid
+          ) {
+            <small class="field-error">
+              Next run is required.
+            </small>
+          }
+
+        </div>
+
+
+        <!-- Active -->
+        <div class="form-field checkbox-field">
+
+          <label>
+            <input
+              type="checkbox"
+              formControlName="isActive"
+            />
+
+            <span>
+              Active
+            </span>
+          </label>
+
+        </div>
+
+
+        <!-- Submit -->
+        <div class="form-actions">
+
+          <button
+            type="submit"
+            class="primary-btn"
+            [disabled]="creating()"
+          >
+
+            {{ creating() ? 'Creating...' : 'Create Schedule' }}
+
+          </button>
+
+        </div>
+
+      </form>
+
+    </section>
+
+
+    <!-- =================================================== -->
+    <!-- CONTENT -->
+    <!-- =================================================== -->
+
+    <div class="content-body">
+
+      <!-- Error -->
+      @if (error()) {
+
+        <div class="state-message state-error">
+
+          <span>
+            {{ error() }}
+          </span>
+
+          <button
+            type="button"
+            class="retry-btn"
+            (click)="retry()"
+          >
+            Retry
+          </button>
+
+        </div>
+
+      }
+
+
+      <!-- Loading -->
+      @else if (loading()) {
+
+        <div class="state-message">
+          Loading schedules...
+        </div>
+
+      }
+
+
+      <!-- Empty -->
+      @else if (schedules().length === 0) {
+
+        <div class="empty-processes">
+
+          <div class="empty-icon">
+            📅
+          </div>
+
+          <div>
+            No schedules found.
+          </div>
+
+        </div>
+
+      }
+
+
+      <!-- Schedule table -->
+      @else {
+
+        <div class="schedule-table-wrapper">
+
+          <table class="schedule-table">
+
+            <thead>
+
+              <tr>
+                <th>Schedule</th>
+                <th>Process</th>
+                <th>Department</th>
+                <th>Schedule Type</th>
+                <th>Scheduled Time</th>
+                <th>Frequency</th>
+                <th>Next Run</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+
+            </thead>
+
+
+            <tbody>
+
+              @for (
+                schedule of schedules();
+                track schedule.id
+              ) {
+
+                <tr>
+
+                  <td>
+                    <div class="process-name">
+                      {{ schedule.scheduleName || '-' }}
+                    </div>
+                  </td>
+
+
+                  <td>
+                    {{ schedule.processName || schedule.processId || '-' }}
+                  </td>
+
+
+                  <td>
+                    {{ schedule.departmentName || '-' }}
+                  </td>
+
+
+                  <td>
+                    {{ schedule.scheduleType || '-' }}
+                  </td>
+
+
+                  <td>
+                    {{ schedule.scheduledTime || schedule.time || '-' }}
+                  </td>
+
+
+                  <td>
+                    {{ schedule.frequency }}
+                  </td>
+
+
+                  <td>
+                    {{ schedule.nextRun | date:'medium' }}
+                  </td>
+
+
+                  <td>
+
+                    <span
+                      class="status-badge"
+                      [class.status-active]="
+                        (schedule.status || (schedule.isActive ? 'Active' : 'Inactive'))
+                          .toLowerCase() === 'active'
+                      "
+                      [class.status-inactive]="
+                        (schedule.status || (schedule.isActive ? 'Active' : 'Inactive'))
+                          .toLowerCase() === 'inactive'
+                      "
+                    >
+                      {{ schedule.status || (schedule.isActive ? 'Active' : 'Inactive') }}
+                    </span>
+
+                  </td>
+
+
+                  <td>
+
+                    <button
+                      type="button"
+                      class="delete-btn"
+                      [disabled]="deletingId() === schedule.id"
+                      (click)="deleteSchedule(schedule)"
+                    >
+
+                      {{
+                        deletingId() === schedule.id
+                          ? 'Deleting...'
+                          : 'Delete'
+                      }}
+
+                    </button>
+
+                  </td>
+
+                </tr>
+
+              }
+
+            </tbody>
+
+          </table>
+
+        </div>
+
+      }
+
+    </div>
+
+  </main>
+
+</div>

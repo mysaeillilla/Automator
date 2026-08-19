@@ -3,12 +3,10 @@ import { HttpClient } from '@angular/common/http';
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { catchError, of } from 'rxjs';
-import { NavbarComponent } from "../navbar-component/navbar-component";
-
-type PanelKey = 'users' | 'department' | 'schedules' | 'history';
+import { NavbarComponent } from '../navbar-component/navbar-component';
 
 interface NavItem {
-  key: PanelKey;
+  key: string;
   label: string;
   icon: string;
 }
@@ -96,12 +94,31 @@ export class AuditlogComponent implements OnInit {
     this.loadHistory();
   }
 
-  goToPanel(key: PanelKey): void {
-    this.router.navigate(['/admin'], {
-      state: {
-        selectedPanel: key
-      }
-    });
+  /**
+   * Navigate to the selected application section.
+   *
+   * No data switching happens here.
+   * Every section has its own route/component.
+   */
+  select(key: string): void {
+    console.log(key);
+    switch (key) {
+      case 'users':
+        this.router.navigate(['/admin']);
+        break;
+
+      case 'department':
+        this.router.navigate(['/departments']);
+        break;
+
+      case 'schedules':
+        this.router.navigate(['/schedules']);
+        break;
+
+      case 'history':
+        this.router.navigate(['/history']);
+        break;
+    }
   }
 
   loadHistory(): void {
@@ -127,7 +144,8 @@ export class AuditlogComponent implements OnInit {
         console.error('Failed to load history:', err);
 
         this.error.set(
-          err?.error?.message || 'Failed to load execution history.'
+          err?.error?.message ||
+          'Failed to load execution history.'
         );
 
         return of(null);

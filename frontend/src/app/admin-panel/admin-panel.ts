@@ -402,9 +402,14 @@ select(key: PanelKey): void {
     this.router.navigate(['/history']);
     return;
   }
-
-  this.selected.set(key);
-  this.loadPanel(key);
+if (key === 'department') {
+    this.router.navigate(['/departments']);
+    return;
+  }
+if (key === 'schedules') {
+    this.router.navigate(['/schedules']);
+    return;
+  }
 }
 
   private setLoading(key: PanelKey, value: boolean) {
