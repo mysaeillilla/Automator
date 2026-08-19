@@ -1,10 +1,11 @@
+using System.Diagnostics;
 using System.Security.Claims;
 using backend.Data;
 using backend.DTOs;
-using backend.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Process = backend.Entities.Process;
 
 namespace backend.Controllers;
 
@@ -13,59 +14,51 @@ namespace backend.Controllers;
 public class ProcessController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
+    private readonly IWebHostEnvironment _environment;
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<ProcessController> _logger;
 
-    public ProcessController(ApplicationDbContext context)
+    public ProcessController(
+        ApplicationDbContext context,
+        IWebHostEnvironment environment,
+        IServiceScopeFactory scopeFactory,
+        ILogger<ProcessController> logger)
     {
         _context = context;
+        _environment = environment;
+        _scopeFactory = scopeFactory;
+        _logger = logger;
     }
-
-
 
     [Authorize]
     [HttpGet("my-processes")]
     public async Task<IActionResult> GetMyProcesses()
     {
-        // Get UserId from JWT
         var userIdClaim =
             User.FindFirst(ClaimTypes.NameIdentifier)?.Value
             ?? User.FindFirst("sub")?.Value;
 
         if (string.IsNullOrWhiteSpace(userIdClaim))
         {
-            return Unauthorized(new
-            {
-                message = "User ID not found in JWT token."
-            });
+            return Unauthorized(new { message = "User ID not found in JWT token." });
         }
 
-        // Convert UserId to Guid
         if (!Guid.TryParse(userIdClaim, out Guid userId))
         {
-            return Unauthorized(new
-            {
-                message = "Invalid User ID in JWT token."
-            });
+            return Unauthorized(new { message = "Invalid User ID in JWT token." });
         }
 
-        // Verify user exists
-        var userExists = await _context.Users
-            .AnyAsync(u => u.Id == userId);
+        var userExists = await _context.Users.AnyAsync(u => u.Id == userId);
 
         if (!userExists)
         {
-            return NotFound(new
-            {
-                message = "User not found."
-            });
+            return NotFound(new { message = "User not found." });
         }
 
-        // Get processes assigned to this user
         var processes = await _context.Process
             .Include(p => p.Department)
             .Include(p => p.UserProcesses)
-            .Where(p =>
-                p.UserProcesses.Any(up =>
-                    up.UserId == userId))
+            .Where(p => p.UserProcesses.Any(up => up.UserId == userId))
             .OrderBy(p => p.ProcessName)
             .Select(p => new
             {
@@ -92,241 +85,327 @@ public class ProcessController : ControllerBase
             processes
         });
     }
-[HttpGet("department/{departmentId}")]
-public async Task<IActionResult> GetProcessesByDepartment(Guid departmentId)
-{
-    var department = await _context.Departments
-        .FirstOrDefaultAsync(d => d.Id == departmentId);
 
-    if (department == null)
+    [HttpGet("department/{departmentId}")]
+    public async Task<IActionResult> GetProcessesByDepartment(Guid departmentId)
     {
-        return NotFound(new
-        {
-            message = "Department not found."
-        });
-    }
+        var department = await _context.Departments
+            .FirstOrDefaultAsync(d => d.Id == departmentId);
 
-    var processes = await _context.Process
-        .Include(p => p.UserProcesses)
-            .ThenInclude(up => up.User)
-        .Where(p => p.DepartmentId == departmentId)
-        .OrderBy(p => p.ProcessName)
-        .Select(p => new
+        if (department == null)
         {
-            p.Id,
-            p.ProcessName,
-            p.Description,
-            p.CreatedAt,
-            p.ModifiedAt,
+            return NotFound(new { message = "Department not found." });
+        }
 
-            Users = p.UserProcesses.Select(up => new
+        var processes = await _context.Process
+            .Include(p => p.UserProcesses)
+                .ThenInclude(up => up.User)
+            .Where(p => p.DepartmentId == departmentId)
+            .OrderBy(p => p.ProcessName)
+            .Select(p => new
             {
-                up.User.Id,
-                up.User.UserName,
-                up.User.Role
+                p.Id,
+                p.ProcessName,
+                p.Description,
+                p.processPath,
+                p.CreatedAt,
+                p.ModifiedAt,
+
+                Users = p.UserProcesses.Select(up => new
+                {
+                    up.User.Id,
+                    up.User.UserName,
+                    up.User.Role
+                })
             })
-        })
-        .ToListAsync();
+            .ToListAsync();
 
-    return Ok(new
-    {
-        departmentId = department.Id,
-        departmentName = department.DepartmentName,
-        processes
-    });
-}
+        return Ok(new
+        {
+            departmentId = department.Id,
+            departmentName = department.DepartmentName,
+            processes
+        });
+    }
+
+    [Authorize(Roles = "Admin")]
     [HttpPost]
-public async Task<IActionResult> CreateProcess(CreateProcessDto dto)
-{
-    // Validate DepartmentId
-    if (string.IsNullOrWhiteSpace(dto.DepartmentId))
+    public async Task<IActionResult> CreateProcess(CreateProcessDto dto)
     {
-        return BadRequest(new
+        if (string.IsNullOrWhiteSpace(dto.DepartmentId))
         {
-            message = "DepartmentId is required."
-        });
-    }
+            return BadRequest(new { message = "DepartmentId is required." });
+        }
 
-    if (!Guid.TryParse(dto.DepartmentId, out Guid departmentId))
-    {
-        return BadRequest(new
+        if (!Guid.TryParse(dto.DepartmentId, out Guid departmentId))
         {
-            message = "Invalid DepartmentId."
-        });
-    }
+            return BadRequest(new { message = "Invalid DepartmentId." });
+        }
 
-    // Check department
-    var department = await _context.Departments
-        .FirstOrDefaultAsync(d => d.Id == departmentId);
+        var department = await _context.Departments
+            .FirstOrDefaultAsync(d => d.Id == departmentId);
 
-    if (department == null)
-    {
-        return NotFound(new
+        if (department == null)
         {
-            message = "Department not found."
-        });
-    }
+            return NotFound(new { message = "Department not found." });
+        }
 
-    // Check duplicate process name within department
-    var processExists = await _context.Process
-        .AnyAsync(p =>
-            p.DepartmentId == departmentId &&
-            p.ProcessName == dto.ProcessName);
+        var processExists = await _context.Process
+            .AnyAsync(p => p.DepartmentId == departmentId && p.ProcessName == dto.ProcessName);
 
-    if (processExists)
-    {
-        return BadRequest(new
+        if (processExists)
         {
-            message = "A process with this name already exists in this department."
-        });
-    }
+            return BadRequest(new { message = "A process with this name already exists in this department." });
+        }
 
-    // Create process
-    var process = new Process
-    {
-        ProcessName = dto.ProcessName,
-        Description = dto.Description,
-        DepartmentId = departmentId,
-        CreatedAt = DateTime.UtcNow,
-        ModifiedAt = DateTime.UtcNow
-    };
-
-    _context.Process.Add(process);
-
-    // Get all users belonging to the department
-    var userDepartments = await _context.UserDepartments
-        .Where(ud => ud.DepartmentId == departmentId)
-        .ToListAsync();
-
-    // Assign all department users to the process
-    foreach (var userDepartment in userDepartments)
-    {
-        var userProcess = new UserProcess
+        var process = new Process
         {
-            UserId = userDepartment.UserId,
-            Process = process,
-            CreatedAt = DateTime.UtcNow
+            ProcessName = dto.ProcessName,
+            Description = dto.Description,
+            DepartmentId = departmentId,
+            CreatedAt = DateTime.UtcNow,
+            ModifiedAt = DateTime.UtcNow
         };
 
-        _context.UserProcess.Add(userProcess);
+        _context.Process.Add(process);
+
+        var userDepartments = await _context.UserDepartments
+            .Where(ud => ud.DepartmentId == departmentId)
+            .ToListAsync();
+
+        foreach (var userDepartment in userDepartments)
+        {
+            var userProcess = new backend.Entities.UserProcess
+            {
+                UserId = userDepartment.UserId,
+                Process = process,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _context.UserProcess.Add(userProcess);
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            message = "Process created successfully.",
+
+            process = new
+            {
+                process.Id,
+                process.ProcessName,
+                process.Description,
+                process.DepartmentId,
+                process.CreatedAt,
+                process.ModifiedAt
+            },
+
+            usersAssigned = userDepartments.Count
+        });
     }
+
+    [HttpPost("list")]
+    public async Task<IActionResult> GetProcesses(ProcessFilterDto dto)
+    {
+        Guid? departmentId = null;
+        Guid? userId = null;
+
+        if (!string.IsNullOrWhiteSpace(dto.DepartmentId))
+        {
+            if (!Guid.TryParse(dto.DepartmentId, out Guid parsedDepartmentId))
+            {
+                return BadRequest(new { message = "Invalid DepartmentId." });
+            }
+
+            departmentId = parsedDepartmentId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(dto.UserId))
+        {
+            if (!Guid.TryParse(dto.UserId, out Guid parsedUserId))
+            {
+                return BadRequest(new { message = "Invalid UserId." });
+            }
+
+            userId = parsedUserId;
+        }
+
+        if (departmentId == null && userId == null)
+        {
+            return BadRequest(new { message = "DepartmentId or UserId is required." });
+        }
+
+        var query = _context.Process
+            .Include(p => p.Department)
+            .Include(p => p.UserProcesses)
+            .AsQueryable();
+
+        if (departmentId.HasValue)
+        {
+            query = query.Where(p => p.DepartmentId == departmentId.Value);
+        }
+
+        if (userId.HasValue)
+        {
+            query = query.Where(p => p.UserProcesses.Any(up => up.UserId == userId.Value));
+        }
+
+        var processes = await query
+            .OrderBy(p => p.ProcessName)
+            .Select(p => new
+            {
+                p.Id,
+                p.ProcessName,
+                p.Description,
+                p.CreatedAt,
+                p.ModifiedAt,
+
+                Department = new
+                {
+                    p.Department.Id,
+                    p.Department.DepartmentName
+                },
+
+                UsersCount = p.UserProcesses.Count()
+            })
+            .ToListAsync();
+
+        return Ok(processes);
+    }
+
+    [HttpPut("{id:guid}/executable")]
+[Authorize(Roles = "Admin")]
+[RequestSizeLimit(500_000_000)] // 500 MB
+public async Task<IActionResult> UploadExecutable(Guid id, IFormFile file)
+{
+    if (file == null || file.Length == 0)
+    {
+        return BadRequest(new
+        {
+            message = "Please select an executable file."
+        });
+    }
+
+    // Validate extension
+    var extension = Path.GetExtension(file.FileName);
+
+    if (!string.Equals(extension, ".exe", StringComparison.OrdinalIgnoreCase))
+    {
+        return BadRequest(new
+        {
+            message = "Only .exe files are allowed."
+        });
+    }
+
+    // Find process
+    var process = await _context.Process
+        .FirstOrDefaultAsync(p => p.Id == id);
+
+    if (process == null)
+    {
+        return NotFound(new
+        {
+            message = "Process not found."
+        });
+    }
+
+    // Create upload directory
+    var processDirectory = Path.Combine(
+        _environment.WebRootPath ?? Path.Combine(_environment.ContentRootPath, "wwwroot"),
+        "processes"
+    );
+
+    Directory.CreateDirectory(processDirectory);
+
+    // Deterministic filename per process — re-uploading always
+    // targets this same file, so there's nothing to clean up and
+    // no risk of orphaned files if a delete step fails.
+    var fileName = $"{process.Id}.exe";
+
+    var filePath = Path.Combine(
+        processDirectory,
+        fileName
+    );
+
+    var isReupload = System.IO.File.Exists(filePath);
+
+    // Save file — FileMode.Create truncates/overwrites if it
+    // already exists, so this handles both first upload and
+    // re-upload the same way.
+    try
+    {
+        await using (var stream = new FileStream(
+            filePath,
+            FileMode.Create,
+            FileAccess.Write,
+            FileShare.None))
+        {
+            await file.CopyToAsync(stream);
+        }
+    }
+    catch (IOException ex)
+    {
+        // Most commonly: the exe is currently running and the OS
+        // has a lock on it, so it can't be overwritten right now.
+        return Conflict(new
+        {
+            message = "Could not update the executable — it may currently be running or locked.",
+            error = ex.Message
+        });
+    }
+
+    // Update path in DB (unchanged if this was a re-upload, since
+    // the filename is deterministic — but keep the assignment for
+    // the first-upload case and to bump ModifiedAt regardless).
+    process.processPath = $"/processes/{fileName}";
+    process.ModifiedAt = DateTime.UtcNow;
 
     await _context.SaveChangesAsync();
 
     return Ok(new
     {
-        message = "Process created successfully.",
-
-        process = new
-        {
-            process.Id,
-            process.ProcessName,
-            process.Description,
-            process.DepartmentId,
-            process.CreatedAt,
-            process.ModifiedAt
-        },
-
-        usersAssigned = userDepartments.Count
+        message = isReupload
+            ? "Executable updated successfully."
+            : "Executable uploaded successfully.",
+        processId = process.Id,
+        processPath = process.processPath,
+        fileName = fileName,
+        wasReupload = isReupload
     });
 }
 
+    // ==================================================================
+    // TRIGGER PROCESS — Windows only, fire-and-forget launch.
+    //
+    // The request thread does validation + creates the ExecutionHistory
+    // row, then returns 202 Accepted immediately. Process.Start() and
+    // everything after it runs on a detached background Task using its
+    // own DI scope/DbContext (the request-scoped _context is disposed
+    // once the response is sent, so it can't be reused there).
+    //
+    // Client should poll GET history/execution-status or similar to see
+    // whether the launch actually succeeded, since that's now unknown
+    // at the time this endpoint returns.
+    // ==================================================================
 
-
-
-
-   [HttpPost("list")]
-public async Task<IActionResult> GetProcesses(ProcessFilterDto dto)
-{
-    Guid? departmentId = null;
-    Guid? userId = null;
-
-    // Convert DepartmentId string to Guid
-    if (!string.IsNullOrWhiteSpace(dto.DepartmentId))
-    {
-        if (!Guid.TryParse(dto.DepartmentId, out Guid parsedDepartmentId))
-        {
-            return BadRequest(new
-            {
-                message = "Invalid DepartmentId."
-            });
-        }
-
-        departmentId = parsedDepartmentId;
-    }
-
-    // Convert UserId string to Guid
-    if (!string.IsNullOrWhiteSpace(dto.UserId))
-    {
-        if (!Guid.TryParse(dto.UserId, out Guid parsedUserId))
-        {
-            return BadRequest(new
-            {
-                message = "Invalid UserId."
-            });
-        }
-
-        userId = parsedUserId;
-    }
-
-    // At least one ID is required
-    if (departmentId == null && userId == null)
-    {
-        return BadRequest(new
-        {
-            message = "DepartmentId or UserId is required."
-        });
-    }
-
-    var query = _context.Process
-        .Include(p => p.Department)
-        .Include(p => p.UserProcesses)
-        .AsQueryable();
-
-    // Filter by department
-    if (departmentId.HasValue)
-    {
-        query = query.Where(p =>
-            p.DepartmentId == departmentId.Value);
-    }
-
-    // Filter by user
-    if (userId.HasValue)
-    {
-        query = query.Where(p =>
-            p.UserProcesses.Any(up =>
-                up.UserId == userId.Value));
-    }
-
-    var processes = await query
-        .OrderBy(p => p.ProcessName)
-        .Select(p => new
-        {
-            p.Id,
-            p.ProcessName,
-            p.Description,
-            p.CreatedAt,
-            p.ModifiedAt,
-
-            Department = new
-            {
-                p.Department.Id,
-                p.Department.DepartmentName
-            },
-
-            UsersCount = p.UserProcesses.Count()
-        })
-        .ToListAsync();
-
-    return Ok(processes);
-}
-
-
-
-[Authorize]
+    [Authorize]
     [HttpPost("{processId}/trigger")]
     public async Task<IActionResult> TriggerProcess(Guid processId)
     {
+        // --------------------------------------------------------
+        // 0. This endpoint only works on a Windows host, since it
+        //    launches a native .exe directly.
+        // --------------------------------------------------------
+
+        if (!OperatingSystem.IsWindows())
+        {
+            return StatusCode(500, new
+            {
+                message = "Process execution is only supported when the API is hosted on Windows."
+            });
+        }
+
         // --------------------------------------------------------
         // 1. Get User ID from JWT
         // --------------------------------------------------------
@@ -337,36 +416,24 @@ public async Task<IActionResult> GetProcesses(ProcessFilterDto dto)
 
         if (string.IsNullOrWhiteSpace(userIdClaim))
         {
-            return Unauthorized(new
-            {
-                message = "User ID not found in JWT token."
-            });
+            return Unauthorized(new { message = "User ID not found in JWT token." });
         }
 
         if (!Guid.TryParse(userIdClaim, out Guid userId))
         {
-            return Unauthorized(new
-            {
-                message = "Invalid User ID in JWT token."
-            });
+            return Unauthorized(new { message = "Invalid User ID in JWT token." });
         }
-
 
         // --------------------------------------------------------
         // 2. Get User
         // --------------------------------------------------------
 
-        var user = await _context.Users
-            .FirstOrDefaultAsync(u => u.Id == userId);
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
 
         if (user == null)
         {
-            return NotFound(new
-            {
-                message = "User not found."
-            });
+            return NotFound(new { message = "User not found." });
         }
-
 
         // --------------------------------------------------------
         // 3. Get Process and verify assignment
@@ -377,8 +444,7 @@ public async Task<IActionResult> GetProcesses(ProcessFilterDto dto)
             .Include(p => p.UserProcesses)
             .FirstOrDefaultAsync(p =>
                 p.Id == processId &&
-                p.UserProcesses.Any(up =>
-                    up.UserId == userId));
+                p.UserProcesses.Any(up => up.UserId == userId));
 
         if (process == null)
         {
@@ -388,171 +454,168 @@ public async Task<IActionResult> GetProcesses(ProcessFilterDto dto)
             });
         }
 
+        // --------------------------------------------------------
+        // 4. Validate EXE path is configured
+        // --------------------------------------------------------
+
+        if (string.IsNullOrWhiteSpace(process.processPath))
+        {
+            return BadRequest(new { message = "No executable is configured for this process." });
+        }
 
         // --------------------------------------------------------
-        // 4. Create ExecutionHistory entry
+        // 5. Resolve + sandbox-check the physical path.
+        //    Fast, synchronous, stays on the request path so bad
+        //    config fails immediately instead of after 202.
         // --------------------------------------------------------
 
-        var execution = new ExecutionHistory
+        var relativePath = process.processPath
+            .TrimStart('/')
+            .Replace('/', Path.DirectorySeparatorChar);
+
+        var webRoot = _environment.WebRootPath;
+
+        if (string.IsNullOrWhiteSpace(webRoot))
+        {
+            webRoot = Path.Combine(_environment.ContentRootPath, "wwwroot");
+        }
+
+        var fullWebRoot = Path.GetFullPath(webRoot);
+        var exePath = Path.GetFullPath(Path.Combine(webRoot, relativePath));
+
+        if (!exePath.StartsWith(fullWebRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new { message = "Invalid executable path." });
+        }
+
+        if (!System.IO.File.Exists(exePath))
+        {
+            return NotFound(new
+            {
+                message = "Executable file not found.",
+                processPath = process.processPath
+            });
+        }
+
+        // --------------------------------------------------------
+        // 6. Create ExecutionHistory row — the only DB write on the
+        //    request path. Gives the client an executionId to poll.
+        // --------------------------------------------------------
+
+        var execution = new backend.Entities.ExecutionHistory
         {
             ProcessId = process.Id,
-
-            // Store process name as a historical snapshot
             ProcessName = process.ProcessName,
-
             TriggeredUserId = user.Id,
-
-            // Store username as a historical snapshot
             TriggeredUserName = user.UserName,
-
             StartTime = DateTime.UtcNow,
-
-            Status = ExecutionStatus.Running,
-
+            Status = backend.Entities.ExecutionStatus.Running,
             TriggerType = "Manual",
-
             ExecutionMode = "Production",
-
-            Remarks = "Process execution started.",
-
+            Remarks = "Process execution queued.",
             CreatedAt = DateTime.UtcNow
         };
 
         _context.ExecutionHistories.Add(execution);
-
-        // Save first so ExecutionId is generated
         await _context.SaveChangesAsync();
 
+        var executionId = execution.ExecutionId;
+        var workingDirectory = Path.GetDirectoryName(exePath)!;
 
         // --------------------------------------------------------
-        // 5. Execute the process
+        // 7. Detached fire-and-forget launch.
+        //    Deliberately NOT awaited on the request path — the
+        //    request returns before this completes. Uses its own
+        //    scope/DbContext since _context is disposed once the
+        //    response is sent.
         // --------------------------------------------------------
 
-        try
+        _ = Task.Run(async () =>
         {
-            await ExecuteProcess(process);
+            using var scope = _scopeFactory.CreateScope();
+            var scopedContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-
-            // ----------------------------------------------------
-            // 6. Mark execution as completed
-            // ----------------------------------------------------
-
-            execution.EndTime = DateTime.UtcNow;
-
-            execution.DurationMs =
-                (long)(execution.EndTime.Value - execution.StartTime)
-                .TotalMilliseconds;
-
-            execution.Status = ExecutionStatus.Completed;
-
-            execution.Remarks =
-                "Process executed successfully.";
-
-            execution.ModifiedAt = DateTime.UtcNow;
-
-
-            await _context.SaveChangesAsync();
-
-
-            // ----------------------------------------------------
-            // 7. Return result
-            // ----------------------------------------------------
-
-            return Ok(new
+            try
             {
-                message = "Process executed successfully.",
-
-                executionId = execution.ExecutionId,
-
-                process = new
+                var startInfo = new ProcessStartInfo
                 {
-                    process.Id,
-                    process.ProcessName,
-                    process.Description,
-                    department = process.Department.DepartmentName
-                },
+                    FileName = exePath,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = false,
+                    RedirectStandardError = false,
+                    CreateNoWindow = true,
+                    WorkingDirectory = workingDirectory
+                };
 
-                triggeredBy = new
-                {
-                    user.Id,
-                    user.UserName
-                },
+                var startedProcess = System.Diagnostics.Process.Start(startInfo);
 
-                execution = new
+                if (startedProcess == null)
                 {
-                    execution.StartTime,
-                    execution.EndTime,
-                    execution.DurationMs,
-                    execution.Status,
-                    execution.Remarks
+                    throw new InvalidOperationException("Process.Start returned null.");
                 }
-            });
-        }
-        catch (Exception ex)
-        {
-            // ----------------------------------------------------
-            // Process failed
-            // ----------------------------------------------------
 
-            execution.EndTime = DateTime.UtcNow;
+                var executionToUpdate = await scopedContext.ExecutionHistories
+                    .FirstOrDefaultAsync(e => e.ExecutionId == executionId);
 
-            execution.DurationMs =
-                (long)(execution.EndTime.Value - execution.StartTime)
-                .TotalMilliseconds;
-
-            execution.Status = ExecutionStatus.Failed;
-
-            execution.Remarks =
-                "Process execution failed.";
-
-            execution.ErrorMessage = ex.Message;
-
-            execution.ModifiedAt = DateTime.UtcNow;
-
-
-            await _context.SaveChangesAsync();
-
-
-            return StatusCode(500, new
+                if (executionToUpdate != null)
+                {
+                    executionToUpdate.Remarks = "Process executable started successfully.";
+                    executionToUpdate.ModifiedAt = DateTime.UtcNow;
+                    await scopedContext.SaveChangesAsync();
+                }
+            }
+            catch (Exception ex)
             {
-                message = "Process execution failed.",
+                _logger.LogError(ex,
+                    "Failed to launch executable for process {ProcessId} (execution {ExecutionId})",
+                    processId, executionId);
 
-                executionId = execution.ExecutionId,
+                var executionToUpdate = await scopedContext.ExecutionHistories
+                    .FirstOrDefaultAsync(e => e.ExecutionId == executionId);
 
-                status = execution.Status,
+                if (executionToUpdate != null)
+                {
+                    executionToUpdate.EndTime = DateTime.UtcNow;
+                    executionToUpdate.DurationMs =
+                        (long)(executionToUpdate.EndTime.Value - executionToUpdate.StartTime).TotalMilliseconds;
+                    executionToUpdate.Status = backend.Entities.ExecutionStatus.Failed;
+                    executionToUpdate.Remarks = "Process execution failed to start.";
+                    executionToUpdate.ErrorMessage = ex.Message;
+                    executionToUpdate.ModifiedAt = DateTime.UtcNow;
 
-                error = execution.ErrorMessage
-            });
-        }
+                    await scopedContext.SaveChangesAsync();
+                }
+            }
+        });
+
+        // --------------------------------------------------------
+        // 8. Return immediately — launch outcome isn't known yet.
+        //    202 Accepted communicates "queued, not finished" more
+        //    accurately than 200 OK.
+        // --------------------------------------------------------
+
+        return Accepted(new
+        {
+            message = "Process trigger accepted; executable is launching.",
+
+            executionId,
+
+            process = new
+            {
+                process.Id,
+                process.ProcessName,
+                process.Description,
+                process.processPath,
+                department = process.Department.DepartmentName
+            },
+
+            triggeredBy = new
+            {
+                user.Id,
+                user.UserName
+            },
+
+            status = backend.Entities.ExecutionStatus.Running
+        });
     }
-
-
-    // ============================================================
-    // Actual Process Execution
-    // ============================================================
-
-    private async Task ExecuteProcess(Process process)
-    {
-        /*
-         * Put your actual process execution logic here.
-         *
-         * For example:
-         *
-         * 1. Load workflow
-         * 2. Get workflow actions
-         * 3. Execute each action
-         * 4. Pass output from one action to another
-         * 5. Handle failures
-         *
-         * Example:
-         *
-         * await _workflowService.ExecuteAsync(process.Id);
-         */
-
-
-        // Temporary simulation
-        await Task.Delay(1000);
-    }
-
-    
 }

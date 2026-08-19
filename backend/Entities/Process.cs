@@ -12,6 +12,9 @@ public class Process
 
     public required string Description { get; set; }
 
+
+    public string? processPath { get; set; } = String.Empty;
+
     // Department relationship
     [ForeignKey(nameof(Department))]
     public Guid DepartmentId { get; set; }

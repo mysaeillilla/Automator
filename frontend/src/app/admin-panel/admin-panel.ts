@@ -4,7 +4,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { catchError, of } from 'rxjs';
 import { NavbarComponent } from "../navbar-component/navbar-component";
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 type PanelKey = 'users' | 'department' | 'schedules' | 'history';
 
 interface NavItem {
@@ -68,7 +68,7 @@ interface HistoryRow { id: number; action: string; user: string; timestamp: stri
 const API_BASE = 'https://localhost:5002/api';
 @Component({
   selector: 'app-admin-panel',
-  imports: [CommonModule, FormsModule, NavbarComponent],
+  imports: [CommonModule, FormsModule, NavbarComponent,RouterLink],
   templateUrl: './admin-panel.html',
   styleUrl: './admin-panel.css',
 })
@@ -318,10 +318,15 @@ deleteProcess(process: Process, departmentId: string): void {
     this.loadPanel('users');
   }
 
-  select(key: PanelKey) {
-    this.selected.set(key);
-    this.loadPanel(key);
+select(key: PanelKey): void {
+  if (key === 'history') {
+    this.router.navigate(['/history']);
+    return;
   }
+
+  this.selected.set(key);
+  this.loadPanel(key);
+}
 
   private setLoading(key: PanelKey, value: boolean) {
     this.loading.update(s => ({ ...s, [key]: value }));

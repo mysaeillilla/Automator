@@ -1,37 +1,16 @@
 <app-navbar-component />
 
-
 <div class="home-container">
-
 
   <!-- Main Content -->
   <main class="home-content">
-
-    <!-- Welcome Section -->
-    <!-- <div class="welcome-actions">
-  <button
-    class="primary-btn"
-    routerLink="/workflow">
-    <span>＋</span>
-    Create Workflow
-  </button>
-
-  <button
-    class="secondary-btn"
-    routerLink="/user">
-    <span>＋</span>
-    Create User
-  </button>
-</div> -->
-
-
 
     <!-- Statistics -->
     <section class="stats-grid">
 
       <div
         class="stat-card"
-        *ngFor="let stat of stats"
+        *ngFor="let stat of stats()"
         [routerLink]="stat.route">
 
         <div class="stat-top">
@@ -40,9 +19,6 @@
             {{ stat.icon }}
           </div>
 
-          <span class="stat-arrow">
-            →
-          </span>
 
         </div>
 
@@ -91,9 +67,7 @@
               <p>{{ action.description }}</p>
             </div>
 
-            <span class="action-arrow">
-              →
-            </span>
+
 
           </div>
 
@@ -112,8 +86,8 @@
             <p>Latest automation executions</p>
           </div>
 
-          <a
-            routerLink="/jobs"
+
+           <a routerLink="/history"
             class="view-all">
 
             View All
@@ -123,47 +97,62 @@
         </div>
 
 
-        <div class="activity-list">
+        @if (historyLoading()) {
+          <div class="activity-list">
+            <p>Loading recent activity…</p>
+          </div>
+        } @else if (historyError()) {
+          <div class="activity-list">
+            <p>{{ historyError() }}</p>
+            <button class="secondary-btn small" (click)="retryHistory()">Retry</button>
+          </div>
+        } @else {
+          <div class="activity-list">
 
-          <div
-            class="activity-item"
-            *ngFor="let activity of recentActivities">
+            <div
+              class="activity-item"
+              *ngFor="let activity of recentActivities()">
 
-            <div class="activity-indicator"
-              [ngClass]="{
-                'completed': activity.status === 'Completed',
-                'running': activity.status === 'Running',
-                'failed': activity.status === 'Failed'
-              }">
-            </div>
+              <div class="activity-indicator"
+                [ngClass]="{
+                  'completed': activity.statusClass === 'completed',
+                  'running': activity.statusClass === 'running',
+                  'failed': activity.statusClass === 'failed'
+                }">
+              </div>
 
-            <div class="activity-details">
+              <div class="activity-details">
 
-              <h3>
-                {{ activity.name }}
-              </h3>
+                <h3>
+                  {{ activity.name }}
+                </h3>
 
-              <span>
-                {{ activity.time }}
+                <span>
+                  {{ activity.time }}
+                </span>
+
+              </div>
+
+              <span
+                class="status"
+                [ngClass]="{
+                  'status-completed': activity.statusClass === 'completed',
+                  'status-running': activity.statusClass === 'running',
+                  'status-failed': activity.statusClass === 'failed'
+                }">
+
+                {{ activity.status }}
+
               </span>
 
             </div>
 
-            <span
-              class="status"
-              [ngClass]="{
-                'status-completed': activity.status === 'Completed',
-                'status-running': activity.status === 'Running',
-                'status-failed': activity.status === 'Failed'
-              }">
-
-              {{ activity.status }}
-
-            </span>
+            <div class="empty-processes" *ngIf="recentActivities().length === 0">
+              No recent activity yet.
+            </div>
 
           </div>
-
-        </div>
+        }
 
       </div>
 

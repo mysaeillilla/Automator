@@ -1,6 +1,3 @@
-
-
-
 <div class="admin-shell">
   <aside class="sidebar">
     <div class="brand">
@@ -41,6 +38,14 @@
       }
     </header>
 
+    <!-- Hidden file input used by Upload EXE, shared across all rows -->
+    <input
+      #processFileInput
+      type="file"
+      accept=".exe"
+      style="display: none"
+      (change)="onProcessFileSelected($event)" />
+
     <div class="content-body">
       @if (loading()) {
         <div class="state-message">Loading processes…</div>
@@ -53,14 +58,17 @@
         @for (p of processes(); track p.id) {
           <div class="process-row">
             <div class="process-info">
-              @if (editingProcessId() === p.id) {
-                <input
-                  class="edit-name-input"
-                  type="text"
-                  [(ngModel)]="editProcessName"
-                  placeholder="Process name" />
+              <div class="process-name">{{ p.processName }}</div>
+
+              @if (p.processPath) {
+                <div class="process-path">
+                  <span>EXE:</span>
+                  {{ p.processPath }}
+                </div>
               } @else {
-                <div class="process-name">{{ p.processName }}</div>
+                <div class="process-path-empty">
+                  No executable configured.
+                </div>
               }
 
               <div class="process-description">{{ p.description }}</div>
@@ -85,46 +93,29 @@
             </div>
 
             @if (isAdmin()) {
-  <div class="process-actions">
+              <div class="process-actions">
+                <button
+                  class="trigger-btn small"
+                  [disabled]="triggerProcessPendingId() === p.id"
+                  (click)="triggerProcess(p)">
+                  {{ triggerProcessPendingId() === p.id ? 'Triggering…' : '▶ Trigger' }}
+                </button>
 
-    @if (editingProcessId() === p.id) {
-      <button
-        class="primary-btn small"
-        (click)="saveProcessEdit(p)">
-        Save
-      </button>
+                <button
+                  class="secondary-btn small"
+                  [disabled]="uploadProcessPendingId() === p.id"
+                  (click)="uploadProcessExe(p)">
+                  {{ uploadProcessPendingId() === p.id ? 'Uploading…' : 'Upload EXE' }}
+                </button>
 
-      <button
-        class="secondary-btn small"
-        (click)="cancelEditProcess()">
-        Cancel
-      </button>
-    } @else {
-
-      <button
-        class="trigger-btn small"
-        [disabled]="triggerProcessPendingId() === p.id"
-        (click)="triggerProcess(p)">
-        {{ triggerProcessPendingId() === p.id ? 'Triggering…' : '▶ Trigger' }}
-      </button>
-
-      <button
-        class="secondary-btn small"
-        (click)="startEditProcess(p)">
-        Edit
-      </button>
-
-      <button
-        class="danger-btn small"
-        [disabled]="deleteProcessPendingId() === p.id"
-        (click)="deleteProcess(p)">
-        {{ deleteProcessPendingId() === p.id ? 'Deleting…' : 'Delete' }}
-      </button>
-    }
-
-  </div>
-}
-
+                <button
+                  class="danger-btn small"
+                  [disabled]="deleteProcessPendingId() === p.id"
+                  (click)="deleteProcess(p)">
+                  {{ deleteProcessPendingId() === p.id ? 'Deleting…' : 'Delete' }}
+                </button>
+              </div>
+            }
           </div>
         } @empty {
           <div class="empty-processes">
