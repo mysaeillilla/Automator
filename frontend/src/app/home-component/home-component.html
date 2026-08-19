@@ -14,12 +14,9 @@
         [routerLink]="stat.route">
 
         <div class="stat-top">
-
           <div class="stat-icon">
             {{ stat.icon }}
           </div>
-
-
         </div>
 
         <div class="stat-value">
@@ -42,21 +39,18 @@
       <div class="dashboard-card">
 
         <div class="card-header">
-
           <div>
             <h2>Quick Actions</h2>
             <p>Common automation operations</p>
           </div>
-
         </div>
-
 
         <div class="quick-actions">
 
           <div
             class="action-item"
             *ngFor="let action of quickActions"
-            [routerLink]="action.route">
+            (click)="handleQuickAction(action)">
 
             <div class="action-icon">
               {{ action.icon }}
@@ -66,8 +60,6 @@
               <h3>{{ action.title }}</h3>
               <p>{{ action.description }}</p>
             </div>
-
-
 
           </div>
 
@@ -86,16 +78,9 @@
             <p>Latest automation executions</p>
           </div>
 
-
-           <a routerLink="/history"
-            class="view-all">
-
-            View All
-
-          </a>
+          <a routerLink="/history" class="view-all">View All</a>
 
         </div>
-
 
         @if (historyLoading()) {
           <div class="activity-list">
@@ -122,15 +107,8 @@
               </div>
 
               <div class="activity-details">
-
-                <h3>
-                  {{ activity.name }}
-                </h3>
-
-                <span>
-                  {{ activity.time }}
-                </span>
-
+                <h3>{{ activity.name }}</h3>
+                <span>{{ activity.time }}</span>
               </div>
 
               <span
@@ -140,9 +118,7 @@
                   'status-running': activity.statusClass === 'running',
                   'status-failed': activity.statusClass === 'failed'
                 }">
-
                 {{ activity.status }}
-
               </span>
 
             </div>
@@ -162,29 +138,15 @@
     <!-- Bottom Banner -->
     <section class="automation-banner">
 
-      <div class="banner-icon">
-        ⚡
-      </div>
+      <div class="banner-icon">⚡</div>
 
       <div class="banner-content">
-
-        <h2>
-          Automate your repetitive tasks
-        </h2>
-
-        <p>
-          Create workflows using reusable actions and execute
-          them automatically.
-        </p>
-
+        <h2>Automate your repetitive tasks</h2>
+        <p>Create workflows using reusable actions and execute them automatically.</p>
       </div>
 
-      <button
-        class="banner-btn"
-        routerLink="/workflow">
-
+      <button class="banner-btn" (click)="handleQuickAction(quickActions[0])">
         Start Building →
-
       </button>
 
     </section>
@@ -192,3 +154,64 @@
   </main>
 
 </div>
+
+<!-- ===================== CREATE WORKFLOW MODAL ===================== -->
+@if (showWorkflowModal()) {
+  <div class="modal-backdrop" (click)="closeWorkflowModal()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <h3>Create Workflow</h3>
+
+      <label class="field">
+        <span>Department</span>
+
+        @if (departmentsLoading()) {
+          <div class="field-loading">Loading departments…</div>
+        } @else {
+          <select [(ngModel)]="newWorkflow.departmentId" name="departmentId">
+            <option value="" disabled>Select a department</option>
+            @for (d of departments(); track d.id) {
+              <option [value]="d.id">{{ d.departmentName }}</option>
+            }
+          </select>
+        }
+
+        @if (departmentsError()) {
+          <div class="field-error-inline">
+            {{ departmentsError() }}
+          </div>
+        }
+      </label>
+
+      <label class="field">
+        <span>Flow Name</span>
+        <input
+          type="text"
+          [(ngModel)]="newWorkflow.flowName"
+          name="flowName"
+          placeholder="e.g. Invoice Approval Flow" />
+      </label>
+
+      <label class="field">
+        <span>Description</span>
+        <textarea
+          [(ngModel)]="newWorkflow.description"
+          name="description"
+          placeholder="Enter a short description"></textarea>
+      </label>
+
+      @if (workflowFormError()) {
+        <div class="form-error">{{ workflowFormError() }}</div>
+      }
+
+      <div class="modal-actions">
+        <button class="secondary-btn" (click)="closeWorkflowModal()">Cancel</button>
+        <button
+          class="primary-btn"
+          [disabled]="workflowFormSubmitting()"
+          (click)="submitNewWorkflow()">
+          {{ workflowFormSubmitting() ? 'Creating…' : 'Create Workflow' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}

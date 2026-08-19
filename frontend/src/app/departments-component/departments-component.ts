@@ -201,8 +201,14 @@ export class DepartmentsComponent {
       processName: this.newProcess.processName.trim(),
       description: this.newProcess.description.trim(),
     };
+const token = localStorage.getItem('auth_token');
 
-    this.http.post(`${API_BASE}/Process`, body).pipe(
+const headers = {
+  Authorization: `Bearer ${token}`
+};
+
+
+    this.http.post(`${API_BASE}/Process`, body, { headers }).pipe(
       catchError(err => {
         this.processFormError.set(err?.error?.message || 'Failed to create process.');
         return of(null);

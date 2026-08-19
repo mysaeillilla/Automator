@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { catchError, of } from 'rxjs';
 import { AuthService } from '../auth-service';
@@ -47,12 +48,30 @@ interface RecentActivity {
   time: string;
 }
 
+interface QuickAction {
+  title: string;
+  description: string;
+  icon: string;
+  route: string;
+}
+
+interface Department {
+  id: string;
+  departmentName: string;
+}
+
+interface NewWorkflowForm {
+  departmentId: string;
+  flowName: string;
+  description: string;
+}
+
 const API_BASE = 'https://localhost:5002/api'; // match other components' API_BASE / adjust port if needed
 const RECENT_ACTIVITY_LIMIT = 4;
 
 @Component({
   selector: 'app-home-component',
-  imports: [CommonModule, RouterLink, NavbarComponent],
+  imports: [CommonModule, FormsModule, RouterLink, NavbarComponent],
   templateUrl: './home-component.html',
   styleUrl: './home-component.css',
 })
@@ -79,7 +98,7 @@ export class HomeComponent {
     { title: 'Failed', value: '0', icon: '⚠', route: '/jobs' },
   ]);
 
-  quickActions = [
+  quickActions: QuickAction[] = [
     {
       title: 'Create Workflow',
       description: 'Build a new automation workflow',
@@ -105,6 +124,17 @@ export class HomeComponent {
       route: '/jobs'
     }
   ];
+
+  // ---- Create Workflow modal state ----
+  showWorkflowModal = signal(false);
+  workflowFormError = signal<string | null>(null);
+  workflowFormSubmitting = signal(false);
+
+  departments = signal<Department[]>([]);
+  departmentsLoading = signal(false);
+  departmentsError = signal<string | null>(null);
+
+  newWorkflow: NewWorkflowForm = { departmentId: '', flowName: '', description: '' };
 
   constructor(
     private authService: AuthService,
@@ -258,5 +288,104 @@ export class HomeComponent {
       parts[0].charAt(0) +
       parts[parts.length - 1].charAt(0)
     ).toUpperCase();
+  }
+
+  // ---- Quick actions ----
+
+  handleQuickAction(action: QuickAction): void {
+    if (action.title === 'Create Workflow') {
+      this.openWorkflowModal();
+      return;
+    }
+
+    this.router.navigateByUrl(action.route);
+  }
+
+  // ---- Create Workflow modal ----
+
+  openWorkflowModal(): void {
+    this.newWorkflow = { departmentId: '', flowName: '', description: '' };
+    this.workflowFormError.set(null);
+    this.showWorkflowModal.set(true);
+
+    if (!this.departments().length) {
+      this.loadDepartments();
+    }
+  }
+
+  closeWorkflowModal(): void {
+    if (this.workflowFormSubmitting()) {
+      return;
+    }
+    this.showWorkflowModal.set(false);
+  }
+
+  private loadDepartments(): void {
+    this.departmentsLoading.set(true);
+    this.departmentsError.set(null);
+
+    const token = localStorage.getItem('auth_token');
+    const headers = new HttpHeaders({
+      Authorization: `Bearer ${token}`
+    });
+
+    this.http.get<Department[]>(`${API_BASE}/Department`, { headers }).pipe(
+      catchError(err => {
+        this.departmentsError.set(err?.error?.message || 'Failed to load departments.');
+        return of([] as Department[]);
+      })
+    ).subscribe(result => {
+      this.departmentsLoading.set(false);
+      this.departments.set(result);
+    });
+  }
+
+  submitNewWorkflow(): void {
+    const flowName = this.newWorkflow.flowName?.trim();
+    const departmentId = this.newWorkflow.departmentId;
+
+    if (!departmentId) {
+      this.workflowFormError.set('Please select a department.');
+      return;
+    }
+
+    if (!flowName) {
+      this.workflowFormError.set('Please enter a flow name.');
+      return;
+    }
+
+    this.workflowFormError.set(null);
+    this.workflowFormSubmitting.set(true);
+
+    const token = localStorage.getItem('auth_token');
+    const headers = new HttpHeaders({
+      Authorization: `Bearer ${token}`
+    });
+
+    const body = {
+      departmentId,
+      processName: flowName,
+      description: this.newWorkflow.description?.trim() || ''
+    };
+
+    let hadError = false;
+
+    this.http.post(`${API_BASE}/Process`, body, { headers }).pipe(
+      catchError(err => {
+        hadError = true;
+        this.workflowFormError.set(err?.error?.message || 'Failed to create workflow.');
+        return of(null);
+      })
+    ).subscribe(() => {
+      this.workflowFormSubmitting.set(false);
+
+      if (hadError) {
+        return;
+      }
+
+      this.showWorkflowModal.set(false);
+      console.log(departmentId);
+      this.router.navigate(['/admin/departments', departmentId]);
+    });
   }
 }

@@ -1,3 +1,5 @@
+<app-navbar-component />
+
 <div class="admin-shell">
   <aside class="sidebar">
     <div class="brand">
@@ -24,7 +26,7 @@
 
   <main class="content-panel">
     <header class="content-header">
-      <div>
+      <div class="header-titles">
         <button class="link-btn back-link" (click)="goBack()">← Back to Departments</button>
 
         @if (department()) {
@@ -57,6 +59,7 @@
       } @else {
         @for (p of processes(); track p.id) {
           <div class="process-row">
+
             <div class="process-info">
               <div class="process-name">{{ p.processName }}</div>
 
@@ -66,9 +69,7 @@
                   {{ p.processPath }}
                 </div>
               } @else {
-                <div class="process-path-empty">
-                  No executable configured.
-                </div>
+                <div class="process-path-empty">No executable configured.</div>
               }
 
               <div class="process-description">{{ p.description }}</div>
@@ -92,8 +93,8 @@
               }
             </div>
 
-            @if (isAdmin()) {
-              <div class="process-actions">
+            <div class="process-controls">
+              <div class="process-actions-primary">
                 <button
                   class="trigger-btn small"
                   [disabled]="triggerProcessPendingId() === p.id"
@@ -102,20 +103,32 @@
                 </button>
 
                 <button
-                  class="secondary-btn small"
-                  [disabled]="uploadProcessPendingId() === p.id"
-                  (click)="uploadProcessExe(p)">
-                  {{ uploadProcessPendingId() === p.id ? 'Uploading…' : 'Upload EXE' }}
-                </button>
-
-                <button
-                  class="danger-btn small"
-                  [disabled]="deleteProcessPendingId() === p.id"
-                  (click)="deleteProcess(p)">
-                  {{ deleteProcessPendingId() === p.id ? 'Deleting…' : 'Delete' }}
+                  class="schedule-btn small"
+                  [disabled]="triggerProcessPendingId() === p.id"
+                  (click)="triggerProcess(p)">
+                  {{ triggerProcessPendingId() === p.id ? 'Triggering…' : '🕒 Schedule Process' }}
                 </button>
               </div>
-            }
+
+              @if (isAdmin()) {
+                <div class="process-actions-admin">
+                  <button
+                    class="secondary-btn small"
+                    [disabled]="uploadProcessPendingId() === p.id"
+                    (click)="uploadProcessExe(p)">
+                    {{ uploadProcessPendingId() === p.id ? 'Uploading…' : 'Upload EXE' }}
+                  </button>
+
+                  <button
+                    class="danger-btn small"
+                    [disabled]="deleteProcessPendingId() === p.id"
+                    (click)="deleteProcess(p)">
+                    {{ deleteProcessPendingId() === p.id ? 'Deleting…' : 'Delete' }}
+                  </button>
+                </div>
+              }
+            </div>
+
           </div>
         } @empty {
           <div class="empty-processes">

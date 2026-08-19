@@ -93,10 +93,89 @@ processError = signal<Record<string, string>>({});
 showProcessModal = signal(false);
 
 processFormSubmitting = signal(false);
+deleteDepartmentPendingId = signal<string | null>(null);
 
+deleteDepartmentError = signal<string | null>(null);
 processFormError = signal('');
 apiUrl = API_BASE;
 activeProcessDepartment = signal<any | null>(null);
+
+
+
+deleteDepartment(department: ApiDepartment): void {
+
+  const confirmed = confirm(
+    `Are you sure you want to delete department "${department.departmentName}"?\n\n` +
+    `This action cannot be undone.`
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  const token = localStorage.getItem('auth_token');
+
+  if (!token) {
+    this.deleteDepartmentError.set(
+      'Authentication token not found.'
+    );
+    return;
+  }
+
+  this.deleteDepartmentPendingId.set(department.id);
+  this.deleteDepartmentError.set(null);
+
+  const headers = {
+    Authorization: `Bearer ${token}`
+  };
+
+  this.http.delete(
+    `${API_BASE}/Department/${department.id}`,
+    { headers }
+  ).pipe(
+    catchError(err => {
+
+      console.error('deleteDepartment error:', err);
+      console.error('Response:', err?.error);
+
+      this.deleteDepartmentError.set(
+        err?.error?.message ||
+        err?.error?.title ||
+        'Failed to delete department.'
+      );
+
+      return of(null);
+    })
+  ).subscribe(result => {
+
+    this.deleteDepartmentPendingId.set(null);
+
+    if (result !== null) {
+
+      // Remove department immediately from UI
+      this.departments.update(departments =>
+        departments.filter(d => d.id !== department.id)
+      );
+
+      // Remove cached processes for this department
+      this.departmentProcesses.update(state => {
+
+        const updated = { ...state };
+
+        delete updated[department.id];
+
+        return updated;
+      });
+
+      // Clear expanded department if it was open
+      if (this.expandedDepartmentId() === department.id) {
+        this.expandedDepartmentId.set(null);
+      }
+    }
+  });
+}
+
+
 
 newProcess = {
   processName: '',
@@ -423,6 +502,12 @@ select(key: PanelKey): void {
 
     this.http.post<ApiUser>(`${API_BASE}/Auth/register`, payload).pipe(
       catchError(err => {
+
+        console.log('Register API error:', err);
+    console.log('Status:', err.status);
+    console.log('Response body:', err.error);
+
+
         console.log(`${API_BASE}/Auth/register`);
         console.log(err);
         this.userFormError.set(err?.error?.message ?? 'Failed to create user.');

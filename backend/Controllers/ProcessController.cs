@@ -85,6 +85,88 @@ public class ProcessController : ControllerBase
             processes
         });
     }
+[Authorize]
+[HttpDelete("delete-processes")]
+public async Task<IActionResult> DeleteProcesses(
+    [FromBody] DeleteProcessesRequest request)
+{
+    if (request == null || request.ProcessIds == null || request.ProcessIds.Count == 0)
+    {
+        return BadRequest(new
+        {
+            message = "At least one Process ID is required."
+        });
+    }
+
+    // Remove duplicate IDs
+    var processIds = request.ProcessIds
+        .Distinct()
+        .ToList();
+
+    // Check which processes exist
+    var processes = await _context.Process
+        .Where(p => processIds.Contains(p.Id))
+        .ToListAsync();
+
+    if (processes.Count == 0)
+    {
+        return NotFound(new
+        {
+            message = "No matching processes found."
+        });
+    }
+
+    // Delete the processes
+    _context.Process.RemoveRange(processes);
+
+    await _context.SaveChangesAsync();
+
+    return Ok(new
+    {
+        message = "Processes deleted successfully.",
+        requestedCount = processIds.Count,
+        deletedCount = processes.Count,
+        deletedProcessIds = processes.Select(p => p.Id)
+    });
+}
+
+
+
+
+[HttpGet("all")]
+public async Task<IActionResult> GetAllProcesses()
+{
+    var processes = await _context.Process
+        .Include(p => p.Department)
+        .Include(p => p.UserProcesses)
+        .OrderBy(p => p.ProcessName)
+        .Select(p => new
+        {
+            p.Id,
+            p.ProcessName,
+            p.Description,
+            p.processPath,
+            p.DepartmentId,
+            p.CreatedAt,
+            p.ModifiedAt,
+
+            Department = new
+            {
+                p.Department.Id,
+                p.Department.DepartmentName
+            },
+
+            UsersCount = p.UserProcesses.Count()
+        })
+        .ToListAsync();
+
+    return Ok(new
+    {
+        count = processes.Count,
+        processes
+    });
+}
+
 
     [HttpGet("department/{departmentId}")]
     public async Task<IActionResult> GetProcessesByDepartment(Guid departmentId)

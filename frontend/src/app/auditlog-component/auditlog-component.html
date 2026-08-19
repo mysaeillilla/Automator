@@ -1,11 +1,8 @@
-  <app-navbar-component />
+<app-navbar-component />
 
-
-  <div class="admin-shell">
-
+<div class="admin-shell">
   <!-- Sidebar -->
   <aside class="sidebar">
-
     <div class="brand">
       <span class="brand-dot"></span>
 
@@ -17,105 +14,50 @@
     </div>
 
     <nav class="nav-list">
-
       @for (item of navItems; track item.key) {
-
         <button
           class="nav-item"
           [class.active]="item.key === 'history'"
           (click)="goToPanel(item.key)">
-
-          <svg
-            viewBox="0 0 24 24"
-            class="nav-icon">
-
-            <path [attr.d]="item.icon"></path>
-
-          </svg>
-
+          <svg viewBox="0 0 24 24" class="nav-icon"><path [attr.d]="item.icon"></path></svg>
           <span>{{ item.label }}</span>
-
         </button>
-
       }
-
     </nav>
-
   </aside>
-
 
   <!-- Main content -->
   <main class="content-panel">
-
     <header class="content-header">
-
-      <div>
+      <div class="header-titles">
         <h2>Execution History</h2>
-        <p class="dept-description">
-          View the history of process executions.
-        </p>
+        <p class="dept-description">View the history of process executions.</p>
       </div>
 
       <button
         class="secondary-btn"
         [disabled]="loading()"
         (click)="loadHistory()">
-
         {{ loading() ? 'Loading...' : 'Refresh' }}
-
       </button>
-
     </header>
 
-
     <div class="content-body">
-
       @if (error()) {
-
         <div class="state-message state-error">
-
           {{ error() }}
-
-          <button
-            class="retry-btn"
-            (click)="retry()">
-
-            Retry
-
-          </button>
-
+          <button class="retry-btn" (click)="retry()">Retry</button>
         </div>
-
-      }
-
-      @else if (loading()) {
-
-        <div class="state-message">
-          Loading execution history…
-        </div>
-
-      }
-
-      @else if (history().length === 0) {
-
+      } @else if (loading()) {
+        <div class="state-message">Loading execution history…</div>
+      } @else if (history().length === 0) {
         <div class="empty-processes">
-
           <div class="empty-icon">◷</div>
-
-          <div>
-            No execution history found.
-          </div>
-
+          <div>No execution history found.</div>
         </div>
-
-      }
-
-      @else {
-
+      } @else {
         <div class="history-table-wrapper">
-
           <table class="history-table">
-
             <thead>
               <tr>
                 <th>ID</th>
@@ -131,128 +73,70 @@
             </thead>
 
             <tbody>
-
               @for (item of history(); track item.executionId) {
-
                 <tr>
+                  <td class="mono">#{{ item.executionId }}</td>
 
                   <td>
-                    #{{ item.executionId }}
+                    <div class="process-name">{{ item.processName }}</div>
                   </td>
 
-                  <td>
-                    <div class="process-name">
-                      {{ item.processName }}
-                    </div>
-                  </td>
+                  <td>{{ item.triggeredUserName || 'System' }}</td>
 
-                  <td>
-                    {{ item.triggeredUserName || 'System' }}
-                  </td>
-
-                  <td>
-                    {{ item.startTime | date:'MMM d, y, h:mm a' }}
-                  </td>
+                  <td>{{ item.startTime | date:'MMM d, y, h:mm a' }}</td>
 
                   <td>
                     @if (item.endTime) {
                       {{ item.endTime | date:'MMM d, y, h:mm a' }}
                     } @else {
-                      -
+                      <span class="cell-muted">—</span>
                     }
                   </td>
 
-                  <td>
-                    {{ formatDuration(item.durationMs) }}
-                  </td>
+                  <td>{{ formatDuration(item.durationMs) }}</td>
 
                   <td>
-
-                    <span
-                      class="status-badge"
-                      [class]="statusClass(item.status)">
-
+                    <span class="status-badge" [class]="statusClass(item.status)">
                       {{ item.status }}
-
                     </span>
-
                   </td>
 
-                  <td>
-                    {{ item.triggerType || '-' }}
-                  </td>
+                  <td>{{ item.triggerType || '—' }}</td>
 
-                  <td>
-                    {{ item.executionMode || '-' }}
-                  </td>
-
+                  <td>{{ item.executionMode || '—' }}</td>
                 </tr>
-
               }
-
             </tbody>
-
           </table>
-
         </div>
-
 
         <!-- Pagination -->
         <div class="pagination">
-
           <div class="pagination-info">
-
             @if (totalCount() > 0) {
-
-              Showing
-              {{ ((currentPage() - 1) * pageSize()) + 1 }}
-              -
-              {{ Math.min(currentPage() * pageSize(), totalCount()) }}
-              of
-              {{ totalCount() }}
-
+              Showing {{ ((currentPage() - 1) * pageSize()) + 1 }}–{{ Math.min(currentPage() * pageSize(), totalCount()) }} of {{ totalCount() }}
             }
-
           </div>
 
-
           <div class="pagination-buttons">
-
             <button
               class="secondary-btn small"
               [disabled]="!history().length || currentPage() === 1"
               (click)="previousPage()">
-
               ← Previous
-
             </button>
 
-
-            <span class="page-number">
-
-              Page {{ currentPage() }}
-              of {{ totalPages() }}
-
-            </span>
-
+            <span class="page-number">Page {{ currentPage() }} of {{ totalPages() }}</span>
 
             <button
               class="secondary-btn small"
               [disabled]="!history().length || currentPage() >= totalPages()"
               (click)="nextPage()">
-
               Next →
-
             </button>
-
           </div>
-
         </div>
-
       }
-
     </div>
-
   </main>
-
 </div>

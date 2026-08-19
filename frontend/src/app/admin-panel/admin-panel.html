@@ -114,15 +114,39 @@
             </div>
 
             <div class="department-meta">
-              <span class="badge">{{ d.userCount }} Users</span>
-              <span class="department-date">{{ d.createdAt | date:'MMM d, y, h:mm a' }}</span>
 
-              @if (isAdmin()) {
-                <button class="link-btn" (click)="$event.stopPropagation(); openMembersModal(d)">
-                  Manage users
-                </button>
-              }
-            </div>
+  <span class="badge">
+    {{ d.userCount }} Users
+  </span>
+
+  <span class="department-date">
+    {{ d.createdAt | date:'MMM d, y, h:mm a' }}
+  </span>
+
+  @if (isAdmin()) {
+
+    <button
+      class="link-btn"
+      (click)="$event.stopPropagation(); openMembersModal(d)">
+      Manage users
+    </button>
+
+    <button
+      class="danger-btn small"
+      [disabled]="deleteDepartmentPendingId() === d.id"
+      (click)="$event.stopPropagation(); deleteDepartment(d)">
+
+      @if (deleteDepartmentPendingId() === d.id) {
+        Deleting…
+      } @else {
+        Delete
+      }
+
+    </button>
+
+  }
+
+</div>
           </div>
         </div>
       } @empty {
