@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, OnInit, signal } from '@angular/core';
 import {
   FormBuilder,
   ReactiveFormsModule,
@@ -15,31 +15,63 @@ interface NavItem {
   icon: string;
 }
 
-interface Schedule {
+interface ProcessDepartment {
   id: string;
+  departmentName: string;
+}
 
-  // API fields
-  scheduleName?: string;
-  processId?: string;
-  time?: string;
-  nextRun?: string;
-  isActive?: boolean;
+interface Process {
+  id: string;
+  processName: string;
+  description?: string;
+  processPath?: string;
+  departmentId?: string;
+  department?: ProcessDepartment;
+  createdAt?: string;
+  modifiedAt?: string;
+  usersCount?: number;
+}
 
-  // Display fields
-  processName?: string;
-  departmentName?: string;
-  scheduleType?: string;
-  scheduledTime?: string;
+interface ProcessListResponse {
+  count: number;
+  processes: Process[];
+}
+
+// Allowed frequency values accepted by the backend (case-insensitive there,
+// but we keep them canonical here so the select and validation match exactly).
+type Frequency = 'Once' | 'Daily' | 'Weekly' | 'Monthly';
+
+const FREQUENCY_OPTIONS: Frequency[] = ['Once', 'Daily', 'Weekly', 'Monthly'];
+
+// Shape returned by GET /api/Schedules and GET /api/Schedules/{id}
+interface ApiSchedule {
+  id: string;
+  scheduleName: string;
+  processId: string;
+  processName: string;
+  departmentId: string;
+  departmentName: string;
+  time: string;       // "HH:mm"
   frequency: string;
-  status?: string;
+  nextRun: string;     // ISO datetime string
+  isActive: boolean;
+  createdAt: string;
+  modifiedAt: string;
+}
+
+// Shape used for rendering in the template (raw API fields + derived display fields)
+interface Schedule extends ApiSchedule {
+  scheduleType: string;
+  scheduledTime: string;
+  status: string;
 }
 
 interface CreateScheduleRequest {
   scheduleName: string;
   processId: string;
-  time: string;
-  frequency: string;
-  nextRun: string;
+  time: string;         // "HH:mm"
+  frequency: Frequency;
+  nextRun: string;       // "dd-MM-yyyy hh:mm tt", e.g. "23-08-2026 05:48 AM"
   isActive: boolean;
 }
 
@@ -54,13 +86,17 @@ interface CreateScheduleRequest {
   templateUrl: './schedules-component.html',
   styleUrl: './schedules-component.css',
 })
-export class SchedulesComponent {
+export class SchedulesComponent implements OnInit {
 
   private readonly router = inject(Router);
   private readonly http = inject(HttpClient);
   private readonly fb = inject(FormBuilder);
 
-  private readonly apiUrl = '/api/Schedules';
+  private readonly apiUrl = 'https://localhost:5002/api/Schedules';
+  private readonly processesUrl = 'https://localhost:5002/api/Process/all';
+
+  // Exposed to the template for the frequency <select>
+  readonly frequencyOptions = FREQUENCY_OPTIONS;
 
   // =========================================================
   // Admin
@@ -133,25 +169,30 @@ export class SchedulesComponent {
   createSuccess = signal<string | null>(null);
 
   // =========================================================
+  // Processes (for Process dropdown)
+  // =========================================================
+
+  processes = signal<Process[]>([]);
+  processesLoading = signal(false);
+  processesError = signal<string | null>(null);
+
+  // =========================================================
   // Create Schedule Form
   // =========================================================
+
+  // Time must be "HH:mm" (24-hour) to match the backend's TimeSpan.TryParseExact.
+  private static readonly TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
   scheduleForm = this.fb.nonNullable.group({
     scheduleName: ['', Validators.required],
 
-    processId: [
-      '',
-      [
-        Validators.required,
-        Validators.pattern(
-          /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/
-        )
-      ]
-    ],
+    processId: ['', Validators.required],
 
-    time: ['', Validators.required],
+    time: ['', [Validators.required, Validators.pattern(SchedulesComponent.TIME_PATTERN)]],
 
-    frequency: ['', Validators.required],
+    // Constrained to exactly what the backend accepts, so the <select>
+    // in the template should bind to frequencyOptions.
+    frequency: ['' as Frequency | '', Validators.required],
 
     nextRun: ['', Validators.required],
 
@@ -164,6 +205,34 @@ export class SchedulesComponent {
 
   ngOnInit(): void {
     this.loadSchedules();
+    this.loadProcesses();
+  }
+
+  // =========================================================
+  // GET /api/Process/all
+  // =========================================================
+
+  loadProcesses(): void {
+    this.processesLoading.set(true);
+    this.processesError.set(null);
+
+    this.http.get<ProcessListResponse>(this.processesUrl).subscribe({
+      next: (data) => {
+        this.processes.set(data?.processes ?? []);
+        this.processesLoading.set(false);
+      },
+
+      error: (err) => {
+        console.error('Failed to load processes:', err);
+
+        this.processesError.set(
+          err?.error?.message ||
+          'Failed to load processes.'
+        );
+
+        this.processesLoading.set(false);
+      }
+    });
   }
 
   // =========================================================
@@ -174,9 +243,9 @@ export class SchedulesComponent {
     this.loading.set(true);
     this.error.set(null);
 
-    this.http.get<Schedule[]>(this.apiUrl).subscribe({
+    this.http.get<ApiSchedule[]>(this.apiUrl).subscribe({
       next: (data) => {
-        this.schedules.set(data ?? []);
+        this.schedules.set((data ?? []).map(s => this.toDisplaySchedule(s)));
         this.loading.set(false);
       },
 
@@ -190,6 +259,34 @@ export class SchedulesComponent {
 
         this.loading.set(false);
       }
+    });
+  }
+
+  // Map the raw API shape onto the display-friendly Schedule used by the template.
+  private toDisplaySchedule(s: ApiSchedule): Schedule {
+    return {
+      ...s,
+      scheduleType: s.frequency,
+      scheduledTime: this.formatDisplayDateTime(s.nextRun, s.time),
+      status: s.isActive ? 'Active' : 'Inactive'
+    };
+  }
+
+  // Formats the ISO nextRun date for display; falls back to just the time if
+  // nextRun can't be parsed.
+  private formatDisplayDateTime(nextRunIso: string, time: string): string {
+    const date = new Date(nextRunIso);
+
+    if (isNaN(date.getTime())) {
+      return time;
+    }
+
+    return date.toLocaleString(undefined, {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
     });
   }
 
@@ -207,9 +304,21 @@ export class SchedulesComponent {
       return;
     }
 
-    this.creating.set(true);
-
     const formValue = this.scheduleForm.getRawValue();
+
+    const nextRunDate = new Date(formValue.nextRun);
+
+    if (isNaN(nextRunDate.getTime())) {
+      this.createError.set('Please enter a valid date and time for Next Run.');
+      return;
+    }
+
+    if (!formValue.frequency) {
+      this.createError.set('Please select a frequency.');
+      return;
+    }
+
+    this.creating.set(true);
 
     const request: CreateScheduleRequest = {
       scheduleName: formValue.scheduleName,
@@ -217,13 +326,13 @@ export class SchedulesComponent {
       time: formValue.time,
       frequency: formValue.frequency,
 
-      // Convert datetime-local value to ISO 8601
-      nextRun: new Date(formValue.nextRun).toISOString(),
+      // Convert datetime-local value to "dd-MM-yyyy hh:mm tt"
+      nextRun: this.formatNextRun(nextRunDate),
 
       isActive: formValue.isActive
     };
 
-    this.http.post<Schedule>(
+    this.http.post<ApiSchedule>(
       this.apiUrl,
       request
     ).subscribe({
@@ -250,7 +359,7 @@ export class SchedulesComponent {
 
       error: (err) => {
         console.error('Failed to create schedule:', err);
-
+        console.log(request);
         this.creating.set(false);
 
         this.createError.set(
@@ -259,6 +368,32 @@ export class SchedulesComponent {
         );
       }
     });
+  }
+
+  // =========================================================
+  // Format a Date as "dd-MM-yyyy hh:mm tt" (e.g. "23-08-2026 05:48 AM")
+  // =========================================================
+
+  private formatNextRun(date: Date): string {
+    const pad = (n: number) => n.toString().padStart(2, '0');
+
+    const day = pad(date.getDate());
+    const month = pad(date.getMonth() + 1);
+    const year = date.getFullYear();
+
+    let hours = date.getHours();
+    const minutes = pad(date.getMinutes());
+
+    const period = hours >= 12 ? 'PM' : 'AM';
+
+    hours = hours % 12;
+    if (hours === 0) {
+      hours = 12;
+    }
+
+    const hoursStr = pad(hours);
+
+    return `${day}-${month}-${year} ${hoursStr}:${minutes} ${period}`;
   }
 
   // =========================================================
@@ -312,5 +447,6 @@ export class SchedulesComponent {
 
   retry(): void {
     this.loadSchedules();
+    this.loadProcesses();
   }
 }

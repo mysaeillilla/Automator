@@ -153,30 +153,47 @@
         </div>
 
 
-        <!-- Process ID -->
-        <div class="form-field">
+        <!-- Process -->
+<!-- Process -->
+<div class="form-field">
 
-          <label for="processId">
-            Process ID
-          </label>
+  <label for="processId">
+    Process
+  </label>
 
-          <input
-            id="processId"
-            type="text"
-            formControlName="processId"
-            placeholder="3fa85f64-5717-4562-b3fc-2c963f66afa6"
-          />
+  <select
+    id="processId"
+    formControlName="processId"
+  >
 
-          @if (
-            scheduleForm.controls.processId.touched &&
-            scheduleForm.controls.processId.invalid
-          ) {
-            <small class="field-error">
-              Enter a valid process ID.
-            </small>
-          }
+    <option value="">
+      {{ processesLoading() ? 'Loading processes...' : 'Select a process' }}
+    </option>
 
-        </div>
+    @for (process of processes(); track process.id) {
+      <option [value]="process.id">
+        {{ process.processName }}{{ process.department?.departmentName ? ' — ' + process.department?.departmentName : '' }}
+      </option>
+    }
+
+  </select>
+
+  @if (
+    scheduleForm.controls.processId.touched &&
+    scheduleForm.controls.processId.invalid
+  ) {
+    <small class="field-error">
+      Select a process.
+    </small>
+  }
+
+  @if (processesError()) {
+    <small class="field-error">
+      {{ processesError() }}
+    </small>
+  }
+
+</div>
 
 
         <!-- Time -->

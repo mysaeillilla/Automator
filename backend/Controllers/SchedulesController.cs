@@ -3,6 +3,7 @@ using backend.DTOs;
 using backend.Entities;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
 
 namespace backend.Controllers;
 
@@ -11,6 +12,18 @@ namespace backend.Controllers;
 public class SchedulesController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
+
+    private static readonly string[] AllowedFrequencies =
+    {
+        "Once",
+        "Daily",
+        "Weekly",
+        "Monthly"
+    };
+
+    private static readonly string[] TimeFormats = { @"hh\:mm", @"hh\:mm\:ss" };
+
+    private const string NextRunFormat = "dd-MM-yyyy hh:mm tt";
 
     public SchedulesController(ApplicationDbContext context)
     {
@@ -33,27 +46,16 @@ public class SchedulesController : ControllerBase
             .Select(s => new
             {
                 id = s.Id,
-
                 scheduleName = s.ScheduleName,
-
                 processId = s.ProcessId,
-
                 processName = s.Process.ProcessName,
-
                 departmentId = s.Process.DepartmentId,
-
                 departmentName = s.Process.Department.DepartmentName,
-
-                time = s.Time,
-
+                time = s.Time.ToString(@"hh\:mm"),
                 frequency = s.Frequency,
-
                 nextRun = s.NextRun,
-
                 isActive = s.IsActive,
-
                 createdAt = s.CreatedAt,
-
                 modifiedAt = s.ModifiedAt
             })
             .ToListAsync();
@@ -77,37 +79,23 @@ public class SchedulesController : ControllerBase
             .Select(s => new
             {
                 id = s.Id,
-
                 scheduleName = s.ScheduleName,
-
                 processId = s.ProcessId,
-
                 processName = s.Process.ProcessName,
-
                 departmentId = s.Process.DepartmentId,
-
                 departmentName = s.Process.Department.DepartmentName,
-
-                time = s.Time,
-
+                time = s.Time.ToString(@"hh\:mm"),
                 frequency = s.Frequency,
-
                 nextRun = s.NextRun,
-
                 isActive = s.IsActive,
-
                 createdAt = s.CreatedAt,
-
                 modifiedAt = s.ModifiedAt
             })
             .FirstOrDefaultAsync();
 
         if (schedule == null)
         {
-            return NotFound(new
-            {
-                message = "Schedule not found."
-            });
+            return NotFound(new { message = "Schedule not found." });
         }
 
         return Ok(schedule);
@@ -119,36 +107,17 @@ public class SchedulesController : ControllerBase
     // =========================================================
 
     [HttpPost]
-    public async Task<IActionResult> CreateSchedule(
-        [FromBody] CreateScheduleRequest request)
+    public async Task<IActionResult> CreateSchedule([FromBody] CreateScheduleRequest request)
     {
-        // -----------------------------------------------------
-        // Validate schedule name
-        // -----------------------------------------------------
-
         if (string.IsNullOrWhiteSpace(request.ScheduleName))
         {
-            return BadRequest(new
-            {
-                message = "Schedule name is required."
-            });
+            return BadRequest(new { message = "Schedule name is required." });
         }
-
-        // -----------------------------------------------------
-        // Validate ProcessId
-        // -----------------------------------------------------
 
         if (request.ProcessId == Guid.Empty)
         {
-            return BadRequest(new
-            {
-                message = "ProcessId is required."
-            });
+            return BadRequest(new { message = "ProcessId is required." });
         }
-
-        // -----------------------------------------------------
-        // Find process
-        // -----------------------------------------------------
 
         var process = await _context.Process
             .Include(p => p.Department)
@@ -156,83 +125,34 @@ public class SchedulesController : ControllerBase
 
         if (process == null)
         {
-            return NotFound(new
-            {
-                message = "Process not found."
-            });
+            return NotFound(new { message = "Process not found." });
         }
 
-        // -----------------------------------------------------
-        // Validate Frequency
-        // -----------------------------------------------------
-
-        var frequency = request.Frequency?.Trim();
-
-        if (string.IsNullOrWhiteSpace(frequency))
+        if (!TryValidateFrequency(request.Frequency, out var frequency, out var frequencyError))
         {
-            return BadRequest(new
-            {
-                message = "Frequency is required."
-            });
+            return BadRequest(new { message = frequencyError });
         }
 
-        var allowedFrequencies = new[]
+        if (!TryValidateTime(request.Time, out var parsedTime, out var timeError))
         {
-            "Once",
-            "Daily",
-            "Weekly",
-            "Monthly"
-        };
-
-        if (!allowedFrequencies.Any(
-                x => x.Equals(
-                    frequency,
-                    StringComparison.OrdinalIgnoreCase)))
-        {
-            return BadRequest(new
-            {
-                message =
-                    "Invalid frequency. " +
-                    "Allowed values are: Once, Daily, Weekly, Monthly."
-            });
+            return BadRequest(new { message = timeError });
         }
 
-        // -----------------------------------------------------
-        // Validate Time
-        // -----------------------------------------------------
-
-        if (request.Time < TimeSpan.Zero ||
-            request.Time >= TimeSpan.FromDays(1))
+        if (!TryParseNextRun(request.NextRun, out var parsedNextRun, out var nextRunError))
         {
-            return BadRequest(new
-            {
-                message =
-                    "Invalid time. Time must be between 00:00 and 23:59:59."
-            });
+            return BadRequest(new { message = nextRunError });
         }
-
-        // -----------------------------------------------------
-        // Create entity
-        // -----------------------------------------------------
 
         var schedule = new Schedules
         {
             Id = Guid.NewGuid(),
-
             ScheduleName = request.ScheduleName.Trim(),
-
             ProcessId = request.ProcessId,
-
-            Time = request.Time,
-
+            Time = parsedTime,
             Frequency = frequency,
-
-            NextRun = request.NextRun,
-
+            NextRun = parsedNextRun,
             IsActive = request.IsActive,
-
             CreatedAt = DateTime.UtcNow,
-
             ModifiedAt = DateTime.UtcNow
         };
 
@@ -240,40 +160,22 @@ public class SchedulesController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        // -----------------------------------------------------
-        // Response
-        // -----------------------------------------------------
-
         return CreatedAtAction(
             nameof(GetSchedule),
-            new
-            {
-                id = schedule.Id
-            },
+            new { id = schedule.Id },
             new
             {
                 id = schedule.Id,
-
                 scheduleName = schedule.ScheduleName,
-
                 processId = schedule.ProcessId,
-
                 processName = process.ProcessName,
-
                 departmentId = process.DepartmentId,
-
                 departmentName = process.Department.DepartmentName,
-
-                time = schedule.Time,
-
+                time = schedule.Time.ToString(@"hh\:mm"),
                 frequency = schedule.Frequency,
-
                 nextRun = schedule.NextRun,
-
                 isActive = schedule.IsActive,
-
                 createdAt = schedule.CreatedAt,
-
                 modifiedAt = schedule.ModifiedAt
             }
         );
@@ -285,43 +187,24 @@ public class SchedulesController : ControllerBase
     // =========================================================
 
     [HttpPut("{id:guid}")]
-    public async Task<IActionResult> UpdateSchedule(
-        Guid id,
-        [FromBody] CreateScheduleRequest request)
+    public async Task<IActionResult> UpdateSchedule(Guid id, [FromBody] CreateScheduleRequest request)
     {
         var schedule = await _context.Schedules
             .FirstOrDefaultAsync(s => s.Id == id);
 
         if (schedule == null)
         {
-            return NotFound(new
-            {
-                message = "Schedule not found."
-            });
+            return NotFound(new { message = "Schedule not found." });
         }
-
-        // -----------------------------------------------------
-        // Validate schedule name
-        // -----------------------------------------------------
 
         if (string.IsNullOrWhiteSpace(request.ScheduleName))
         {
-            return BadRequest(new
-            {
-                message = "Schedule name is required."
-            });
+            return BadRequest(new { message = "Schedule name is required." });
         }
-
-        // -----------------------------------------------------
-        // Validate ProcessId
-        // -----------------------------------------------------
 
         if (request.ProcessId == Guid.Empty)
         {
-            return BadRequest(new
-            {
-                message = "ProcessId is required."
-            });
+            return BadRequest(new { message = "ProcessId is required." });
         }
 
         var process = await _context.Process
@@ -330,109 +213,47 @@ public class SchedulesController : ControllerBase
 
         if (process == null)
         {
-            return NotFound(new
-            {
-                message = "Process not found."
-            });
+            return NotFound(new { message = "Process not found." });
         }
 
-        // -----------------------------------------------------
-        // Validate Frequency
-        // -----------------------------------------------------
-
-        var frequency = request.Frequency?.Trim();
-
-        if (string.IsNullOrWhiteSpace(frequency))
+        if (!TryValidateFrequency(request.Frequency, out var frequency, out var frequencyError))
         {
-            return BadRequest(new
-            {
-                message = "Frequency is required."
-            });
+            return BadRequest(new { message = frequencyError });
         }
 
-        var allowedFrequencies = new[]
+        if (!TryValidateTime(request.Time, out var parsedTime, out var timeError))
         {
-            "Once",
-            "Daily",
-            "Weekly",
-            "Monthly"
-        };
-
-        if (!allowedFrequencies.Any(
-                x => x.Equals(
-                    frequency,
-                    StringComparison.OrdinalIgnoreCase)))
-        {
-            return BadRequest(new
-            {
-                message =
-                    "Invalid frequency. " +
-                    "Allowed values are: Once, Daily, Weekly, Monthly."
-            });
+            return BadRequest(new { message = timeError });
         }
 
-        // -----------------------------------------------------
-        // Validate Time
-        // -----------------------------------------------------
-
-        if (request.Time < TimeSpan.Zero ||
-            request.Time >= TimeSpan.FromDays(1))
+        if (!TryParseNextRun(request.NextRun, out var parsedNextRun, out var nextRunError))
         {
-            return BadRequest(new
-            {
-                message =
-                    "Invalid time. Time must be between 00:00 and 23:59:59."
-            });
+            return BadRequest(new { message = nextRunError });
         }
-
-        // -----------------------------------------------------
-        // Update entity
-        // -----------------------------------------------------
 
         schedule.ScheduleName = request.ScheduleName.Trim();
-
         schedule.ProcessId = request.ProcessId;
-
-        schedule.Time = request.Time;
-
+        schedule.Time = parsedTime;
         schedule.Frequency = frequency;
-
-        schedule.NextRun = request.NextRun;
-
+        schedule.NextRun = parsedNextRun;
         schedule.IsActive = request.IsActive;
-
         schedule.ModifiedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
-        // -----------------------------------------------------
-        // Response
-        // -----------------------------------------------------
-
         return Ok(new
         {
             id = schedule.Id,
-
             scheduleName = schedule.ScheduleName,
-
             processId = schedule.ProcessId,
-
             processName = process.ProcessName,
-
             departmentId = process.DepartmentId,
-
             departmentName = process.Department.DepartmentName,
-
-            time = schedule.Time,
-
+            time = schedule.Time.ToString(@"hh\:mm"),
             frequency = schedule.Frequency,
-
             nextRun = schedule.NextRun,
-
             isActive = schedule.IsActive,
-
             createdAt = schedule.CreatedAt,
-
             modifiedAt = schedule.ModifiedAt
         });
     }
@@ -449,10 +270,7 @@ public class SchedulesController : ControllerBase
 
         if (schedule == null)
         {
-            return NotFound(new
-            {
-                message = "Schedule not found."
-            });
+            return NotFound(new { message = "Schedule not found." });
         }
 
         _context.Schedules.Remove(schedule);
@@ -464,5 +282,86 @@ public class SchedulesController : ControllerBase
             message = "Schedule deleted successfully.",
             id = id
         });
+    }
+
+    // =========================================================
+    // Shared validation helpers
+    // =========================================================
+
+    private static bool TryValidateFrequency(string? rawFrequency, out string frequency, out string error)
+    {
+        frequency = rawFrequency?.Trim() ?? string.Empty;
+        error = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(frequency))
+        {
+            error = "Frequency is required.";
+            return false;
+        }
+
+        var normalizedFrequency = frequency;
+
+        if (!AllowedFrequencies.Any(x => x.Equals(normalizedFrequency, StringComparison.OrdinalIgnoreCase)))
+        {
+            error = "Invalid frequency. Allowed values are: Once, Daily, Weekly, Monthly.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryValidateTime(string? rawTime, out TimeSpan parsedTime, out string error)
+    {
+        parsedTime = default;
+        error = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(rawTime))
+        {
+            error = "Time is required.";
+            return false;
+        }
+
+        if (!TimeSpan.TryParseExact(
+                rawTime.Trim(),
+                TimeFormats,
+                CultureInfo.InvariantCulture,
+                out parsedTime))
+        {
+            error = "Invalid time format. Expected format: HH:mm (e.g. \"14:30\").";
+            return false;
+        }
+
+        if (parsedTime < TimeSpan.Zero || parsedTime >= TimeSpan.FromDays(1))
+        {
+            error = "Invalid time. Time must be between 00:00 and 23:59:59.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryParseNextRun(string? rawNextRun, out DateTime parsedNextRun, out string error)
+    {
+        parsedNextRun = default;
+        error = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(rawNextRun))
+        {
+            error = "NextRun is required.";
+            return false;
+        }
+
+        if (!DateTime.TryParseExact(
+                rawNextRun.Trim(),
+                NextRunFormat,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out parsedNextRun))
+        {
+            error = $"Invalid NextRun format. Expected format: {NextRunFormat} (e.g. \"23-08-2026 05:48 AM\").";
+            return false;
+        }
+
+        return true;
     }
 }
