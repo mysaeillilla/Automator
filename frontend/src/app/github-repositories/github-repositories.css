@@ -1,0 +1,659 @@
+/* ==========================================================================
+   Repositories Page — Light Theme
+   ========================================================================== */
+
+:host {
+  --brand-teal: #14b8a6;
+  --brand-blue: #3b82f6;
+  --brand-gradient: linear-gradient(
+    135deg,
+    var(--brand-teal) 0%,
+    var(--brand-blue) 100%
+  );
+
+  --brand-blue-soft: #eff6ff;
+  --brand-teal-soft: #ecfdf9;
+
+  --surface: #ffffff;
+  --surface-alt: #f7f9fb;
+  --surface-sunken: #f1f4f8;
+
+  --border: #e3e8ef;
+  --border-strong: #cbd5e1;
+
+  --text-primary: #1e293b;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+
+  --danger: #ef4444;
+  --danger-soft: #fef2f2;
+  --danger-border: #fecaca;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 14px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.12);
+
+  display: block;
+  min-height: 100%;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: var(--text-primary);
+  background: var(--surface-alt);
+}
+
+
+/* ==========================================================================
+   Layout
+   ========================================================================== */
+
+.admin-shell {
+  display: flex;
+  min-height: 100vh;
+  background: var(--surface-alt);
+}
+
+
+/* ==========================================================================
+   Sidebar
+   ========================================================================== */
+
+.sidebar {
+  width: 240px;
+  flex-shrink: 0;
+
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+
+  padding: 24px 16px;
+
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+
+/* Brand */
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px;
+}
+
+.brand-dot {
+  width: 12px;
+  height: 12px;
+
+  border-radius: 50%;
+
+  background: var(--brand-gradient);
+
+  box-shadow:
+    0 0 0 4px var(--brand-teal-soft);
+
+  flex-shrink: 0;
+}
+
+.brand-text {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  color: var(--text-primary);
+}
+
+
+/* Navigation */
+
+.nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  width: 100%;
+
+  padding: 10px 12px;
+
+  border: none;
+  border-radius: var(--radius-sm);
+
+  background: transparent;
+
+  color: var(--text-secondary);
+
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+
+  text-align: left;
+
+  cursor: pointer;
+
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.nav-item:hover {
+  background: var(--surface-sunken);
+  color: var(--text-primary);
+}
+
+.nav-item.active {
+  background: var(--brand-blue-soft);
+  color: var(--brand-blue);
+  font-weight: 600;
+}
+
+.nav-icon {
+  width: 18px;
+  height: 18px;
+
+  flex-shrink: 0;
+
+  fill: var(--text-muted);
+
+  transition: fill 0.15s ease;
+}
+
+.nav-item.active .nav-icon {
+  fill: var(--brand-blue);
+}
+
+
+/* ==========================================================================
+   Main Content
+   ========================================================================== */
+
+.content-panel {
+  flex: 1;
+  min-width: 0;
+
+  padding: 32px 40px;
+
+  overflow-x: hidden;
+}
+
+
+/* ==========================================================================
+   Header
+   ========================================================================== */
+
+.content-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  margin-bottom: 24px;
+}
+
+.header-titles {
+  min-width: 0;
+}
+
+.content-header h2 {
+  margin: 0;
+
+  font-size: 20px;
+  font-weight: 700;
+
+  color: var(--text-primary);
+}
+
+.dept-description {
+  margin: 5px 0 0;
+
+  font-size: 13px;
+  line-height: 1.5;
+
+  color: var(--text-secondary);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  flex-shrink: 0;
+}
+
+
+/* ==========================================================================
+   Buttons
+   ========================================================================== */
+
+.secondary-btn,
+.retry-btn {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+
+  border-radius: var(--radius-sm);
+
+  cursor: pointer;
+
+  transition: all 0.15s ease;
+}
+
+.secondary-btn {
+  padding: 9px 18px;
+
+  background: var(--surface);
+
+  color: var(--text-secondary);
+
+  border: 1px solid var(--border-strong);
+}
+
+.secondary-btn:hover:not(:disabled) {
+  background: var(--surface-sunken);
+  color: var(--text-primary);
+}
+
+.secondary-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+
+/* ==========================================================================
+   Content Body
+   ========================================================================== */
+
+.content-body {
+  background: var(--surface);
+
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+
+  box-shadow: var(--shadow-sm);
+
+  padding: 8px;
+
+  overflow: hidden;
+}
+
+
+/* ==========================================================================
+   Repository Table
+   ========================================================================== */
+
+.department-table-wrapper {
+  width: 100%;
+
+  overflow-x: auto;
+
+  border-radius: var(--radius-md);
+}
+
+
+/* Main table */
+
+.department-table {
+  width: 100%;
+
+  min-width: 950px;
+
+  border-collapse: collapse;
+
+  font-size: 14px;
+}
+
+
+/* ==========================================================================
+   Table Header
+   ========================================================================== */
+
+.department-table thead th {
+  padding: 12px 16px;
+
+  text-align: left;
+
+  font-size: 12px;
+  font-weight: 700;
+
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+
+  color: var(--text-muted);
+
+  background: var(--surface-sunken);
+
+  border-bottom: 1px solid var(--border);
+
+  white-space: nowrap;
+}
+
+.department-table thead th:first-child {
+  border-top-left-radius: var(--radius-md);
+}
+
+.department-table thead th:last-child {
+  border-top-right-radius: var(--radius-md);
+}
+
+
+/* ==========================================================================
+   Table Body
+   ========================================================================== */
+
+.department-table tbody td {
+  padding: 14px 16px;
+
+  color: var(--text-primary);
+
+  border-bottom: 1px solid var(--border);
+
+  vertical-align: middle;
+}
+
+.department-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.department-table tbody tr {
+  transition: background 0.15s ease;
+}
+
+.department-table tbody tr:hover td {
+  background: var(--surface-alt);
+}
+
+
+/* ==========================================================================
+   Repository Name
+   ========================================================================== */
+
+.department-link {
+  display: inline-block;
+
+  color: inherit;
+
+  text-decoration: none;
+
+  min-width: 160px;
+}
+
+.department-link:hover .department-name {
+  color: var(--brand-blue);
+  text-decoration: underline;
+}
+
+.department-name {
+  font-size: 14px;
+  font-weight: 600;
+
+  color: var(--text-primary);
+
+  transition: color 0.15s ease;
+
+  white-space: nowrap;
+}
+
+
+/* ==========================================================================
+   Repository Description
+   ========================================================================== */
+
+.department-description {
+  max-width: 380px;
+
+  font-size: 13px;
+  line-height: 1.45;
+
+  color: var(--text-secondary);
+
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+
+  white-space: nowrap;
+}
+
+
+/* ==========================================================================
+   Numeric Values
+   ========================================================================== */
+
+.user-count {
+  display: inline-flex;
+
+  align-items: center;
+  justify-content: center;
+
+  min-width: 28px;
+
+  font-size: 13px;
+  font-weight: 600;
+
+  color: var(--text-primary);
+}
+
+
+/* ==========================================================================
+   Visibility
+   ========================================================================== */
+
+.department-table td:nth-child(6) {
+  font-size: 13px;
+  font-weight: 600;
+
+  color: var(--text-secondary);
+}
+
+
+/* ==========================================================================
+   Repository Updated Date
+   ========================================================================== */
+
+.department-table td:nth-child(7) {
+  font-size: 13px;
+
+  color: var(--text-muted);
+
+  white-space: nowrap;
+}
+
+
+/* ==========================================================================
+   State Messages
+   ========================================================================== */
+
+.state-message {
+  min-height: 180px;
+
+  padding: 40px 16px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  text-align: center;
+
+  color: var(--text-secondary);
+
+  font-size: 14px;
+}
+
+.state-error {
+  color: var(--danger);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 8px;
+}
+
+
+/* ==========================================================================
+   Retry Button
+   ========================================================================== */
+
+.retry-btn {
+  background: var(--surface);
+
+  color: var(--brand-blue);
+
+  border: 1px solid var(--brand-blue);
+
+  padding: 6px 14px;
+
+  margin-left: 12px;
+}
+
+.retry-btn:hover {
+  background: var(--brand-blue-soft);
+}
+
+
+/* ==========================================================================
+   Empty State
+   ========================================================================== */
+
+.empty-processes {
+  min-height: 220px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  gap: 10px;
+
+  color: var(--text-secondary);
+
+  font-size: 14px;
+
+  text-align: center;
+}
+
+.empty-icon {
+  width: 48px;
+  height: 48px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: var(--radius-md);
+
+  background: var(--brand-blue-soft);
+
+  font-size: 22px;
+
+  box-shadow: var(--shadow-sm);
+}
+
+
+/* ==========================================================================
+   Scrollbar
+   ========================================================================== */
+
+.department-table-wrapper::-webkit-scrollbar {
+  height: 8px;
+}
+
+.department-table-wrapper::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+
+.department-table-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+
+@media (max-width: 1000px) {
+
+  .sidebar {
+    width: 210px;
+  }
+
+  .content-panel {
+    padding: 28px 24px;
+  }
+
+}
+
+
+@media (max-width: 760px) {
+
+  .admin-shell {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+
+    padding: 16px;
+
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+
+    gap: 16px;
+  }
+
+  .nav-list {
+    flex-direction: row;
+
+    overflow-x: auto;
+
+    gap: 4px;
+  }
+
+  .nav-item {
+    width: auto;
+
+    white-space: nowrap;
+  }
+
+  .content-panel {
+    padding: 20px 16px;
+  }
+
+  .content-header {
+    align-items: flex-start;
+
+    gap: 16px;
+  }
+
+}
+
+
+@media (max-width: 520px) {
+
+  .content-header {
+    flex-direction: column;
+  }
+
+  .header-actions {
+    width: 100%;
+  }
+
+  .secondary-btn {
+    width: 100%;
+  }
+
+  .content-header h2 {
+    font-size: 18px;
+  }
+
+  .content-body {
+    padding: 6px;
+  }
+
+}

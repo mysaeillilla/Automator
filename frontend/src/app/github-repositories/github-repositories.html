@@ -1,0 +1,244 @@
+<app-navbar-component />
+
+<div class="admin-shell">
+
+  <!-- Sidebar (unchanged) -->
+  <aside class="sidebar">
+
+    <div class="brand">
+      <span class="brand-dot"></span>
+
+      <span class="brand-text">
+        {{ isAdmin() ? 'Admin Panel' : 'Dashboard' }}
+      </span>
+    </div>
+
+
+    <nav class="nav-list">
+
+      @for (item of navItems; track item.key) {
+
+        <button
+          type="button"
+          class="nav-item"
+          [class.active]="item.key === 'repositories'"
+          (click)="select(item.key)"
+        >
+
+          <svg
+            viewBox="0 0 24 24"
+            class="nav-icon"
+            aria-hidden="true"
+          >
+            <path [attr.d]="item.icon"></path>
+          </svg>
+
+          <span>{{ item.label }}</span>
+
+        </button>
+
+      }
+
+    </nav>
+
+  </aside>
+
+
+  <!-- Main -->
+  <main class="content-panel">
+
+    <header class="content-header">
+
+      <div class="header-titles">
+
+        <h2>Repositories</h2>
+
+        <p class="dept-description">
+          GitHub repositories synced to your account.
+        </p>
+
+      </div>
+
+
+      <div class="header-actions">
+
+        <button
+          type="button"
+          class="secondary-btn"
+          [disabled]="loading()"
+          (click)="loadRepositories()"
+        >
+          {{ loading() ? 'Loading...' : 'Refresh' }}
+        </button>
+
+      </div>
+
+    </header>
+
+
+    <div class="content-body">
+
+      <!-- Error -->
+      @if (error()) {
+
+        <div class="state-message state-error">
+
+          <span>
+            {{ error() }}
+          </span>
+
+          <button
+            type="button"
+            class="retry-btn"
+            (click)="retry()"
+          >
+            Retry
+          </button>
+
+        </div>
+
+      }
+
+      <!-- Loading -->
+      @else if (loading()) {
+
+        <div class="state-message">
+          Loading repositories...
+        </div>
+
+      }
+
+      <!-- Empty -->
+      @else if (repositories().length === 0) {
+
+        <div class="empty-processes">
+
+          <div class="empty-icon">
+            📦
+          </div>
+
+          <div>
+            No repositories found.
+          </div>
+
+        </div>
+
+      }
+
+      <!-- Repositories -->
+      @else {
+
+        <div class="department-table-wrapper">
+
+          <table class="department-table">
+
+            <thead>
+
+              <tr>
+                <th>Repository</th>
+                <th>Description</th>
+                <th>Language</th>
+                <th>Stars</th>
+                <th>Forks</th>
+                <th>Visibility</th>
+                <th>Repo Updated</th>
+              </tr>
+
+            </thead>
+
+
+            <tbody>
+
+              @for (
+                repo of repositories();
+                track repo.id
+              ) {
+
+                <tr>
+
+                  <!-- Repository -->
+                  <td>
+
+
+                   <a   class="department-link"
+  [href]="repo.html_url"
+  target="_blank"
+  rel="noopener noreferrer"
+                    >
+
+                      <div class="department-name">
+                        {{ repo.name }}
+                      </div>
+ <div>
+        URL: {{ repo.html_url }}
+      </div>
+                    </a>
+
+                  </td>
+
+
+                  <!-- Description -->
+                  <td>
+
+                    <div class="department-description">
+                      {{ repo.description || '—' }}
+                    </div>
+
+                  </td>
+
+
+                  <!-- Language -->
+                  <td>
+                    {{ repo.language || '—' }}
+                  </td>
+
+
+                  <!-- Stars -->
+                  <td>
+                    <span class="user-count">
+                      {{ repo.stargazersCount }}
+                    </span>
+                  </td>
+
+
+                  <!-- Forks -->
+                  <td>
+                    <span class="user-count">
+                      {{ repo.forksCount }}
+                    </span>
+                  </td>
+
+
+                  <!-- Visibility -->
+                  <td>
+                    {{ repo.isPrivate ? 'Private' : 'Public' }}
+                  </td>
+
+
+                  <!-- Repo Updated -->
+                  <td>
+
+                    {{
+                      repo.repoUpdatedAt
+
+                    }}
+
+                  </td>
+
+                </tr>
+
+              }
+
+            </tbody>
+
+          </table>
+
+        </div>
+
+      }
+
+    </div>
+
+  </main>
+
+</div>

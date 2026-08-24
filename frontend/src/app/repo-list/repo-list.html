@@ -1,0 +1,59 @@
+<div class="repo-list">
+
+  @if (loading()) {
+    <div class="repo-list__loading">
+      <div class="repo-list__spinner"></div>
+      <span>Loading repositories…</span>
+    </div>
+  } @else if (errorMessage()) {
+    <div class="repo-list__error">
+      <span>{{ errorMessage() }}</span>
+      <button
+        class="repo-list__retry-btn"
+        type="button"
+        [disabled]="connecting()"
+        (click)="connectGitHub()"
+      >
+        {{ connecting() ? 'Redirecting…' : 'Connect GitHub' }}
+      </button>
+    </div>
+  } @else if (repositories().length === 0) {
+    <div class="repo-list__empty">
+      <span>No repositories found.</span>
+
+    <a    class="repo-list__connect-link"
+        href="javascript:void(0)"
+        [class.repo-list__connect-link--disabled]="connecting()"
+        (click)="connectGitHub()"
+      >
+        {{ connecting() ? 'Redirecting…' : 'Connect GitHub' }}
+      </a>
+    </div>
+  } @else {
+    <ul class="repo-list__items">
+      @for (repo of repositories(); track repo.id) {
+        <li class="repo-list__item">
+
+           <a class="repo-list__link"
+            [href]="repo.htmlUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <div class="repo-list__top">
+              <span class="repo-list__name">{{ repo.name }}</span>
+              @if (repo.private) {
+                <span class="repo-list__badge">Private</span>
+              }
+            </div>
+            @if (repo.description) {
+              <p class="repo-list__desc">{{ repo.description }}</p>
+            }
+            <div class="repo-list__meta">
+              <span class="repo-list__branch">{{ repo.defaultBranch }}</span>
+            </div>
+          </a>
+        </li>
+      }
+    </ul>
+  }
+</div>

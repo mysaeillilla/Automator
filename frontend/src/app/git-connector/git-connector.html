@@ -1,0 +1,124 @@
+<div class="git-connector">
+
+  @if (loadingStatus()) {
+    <div class="git-connector__loading-state">
+      <div class="git-connector__spinner"></div>
+      <span>Checking GitHub connection…</span>
+    </div>
+  } @else {
+
+    @if (errorMessage()) {
+      <div class="git-connector__error">
+        <span>{{ errorMessage() }}</span>
+        <button
+          class="git-connector__error-dismiss"
+          type="button"
+          (click)="errorMessage.set(null)"
+          aria-label="Dismiss error"
+        >
+          ✕
+        </button>
+      </div>
+    }
+
+    @if (!isConnected()) {
+      <!-- Not connected -->
+      <div class="git-connector__empty-state">
+        <div class="git-connector__icon">
+          <svg viewBox="0 0 16 16" width="28" height="28" fill="currentColor">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38
+              0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13
+              -.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66
+              .07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15
+              -.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0
+              1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82
+              1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48
+              0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8
+              c0-4.42-3.58-8-8-8z"/>
+          </svg>
+        </div>
+        <p class="git-connector__empty-text">Connect your GitHub account to browse and use your repositories.</p>
+        <button
+          class="git-connector__connect-btn"
+          type="button"
+          [disabled]="connecting()"
+          (click)="connectGitHub()"
+        >
+          @if (connecting()) {
+            <span class="git-connector__btn-spinner"></span>
+            Redirecting…
+          } @else {
+            Connect GitHub
+          }
+        </button>
+      </div>
+
+    } @else {
+      <!-- Connected -->
+      <div class="git-connector__header">
+        <div class="git-connector__status">
+          <span class="git-connector__status-dot"></span>
+          <span class="git-connector__status-text">
+            Connected
+            @if (githubUsername()) {
+              as <strong>&#64;{{ githubUsername() }}</strong>
+            }
+          </span>
+        </div>
+        <button
+          class="git-connector__disconnect-btn"
+          type="button"
+          (click)="disconnectGitHub()"
+          title="Disconnect GitHub"
+        >
+          Disconnect
+        </button>
+      </div>
+
+      @if (loadingRepositories()) {
+        <div class="git-connector__loading-state git-connector__loading-state--compact">
+          <div class="git-connector__spinner"></div>
+          <span>Loading repositories…</span>
+        </div>
+      } @else if (repositories().length === 0) {
+        <div class="git-connector__no-repos">
+          <span>No repositories found.</span>
+        </div>
+      } @else {
+        <ul class="git-connector__repo-list">
+          @for (repo of repositories(); track repo.id) {
+            <li class="git-connector__repo-item">
+
+             <a   class="git-connector__repo-link"
+                [href]="repo.htmlUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <div class="git-connector__repo-top">
+                  <span class="git-connector__repo-name">{{ repo.name }}</span>
+                  @if (repo.private) {
+                    <span class="git-connector__repo-badge">Private</span>
+                  }
+                </div>
+                @if (repo.description) {
+                  <p class="git-connector__repo-desc">{{ repo.description }}</p>
+                }
+                <div class="git-connector__repo-meta">
+                  <span class="git-connector__repo-branch">
+                    <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
+                      <path d="M11.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zm-2.25.75a2.25 2.25 0 1 1 3 2.122
+                        V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372
+                        a2.25 2.25 0 1 1 1.5 0V6.5A1 1 0 0 0 6 7.5h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25zM4.25 12a.75.75
+                        0 1 0 0 1.5.75.75 0 0 0 0-1.5zM3.5 3.25a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0z"/>
+                    </svg>
+                    {{ repo.defaultBranch }}
+                  </span>
+                </div>
+              </a>
+            </li>
+          }
+        </ul>
+      }
+    }
+  }
+</div>

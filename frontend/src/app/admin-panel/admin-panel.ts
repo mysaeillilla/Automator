@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { catchError, of } from 'rxjs';
 import { NavbarComponent } from "../navbar-component/navbar-component";
 import { Router, RouterLink } from '@angular/router';
+import { GitConnector } from "../git-connector/git-connector";
 type PanelKey = 'users' | 'department' | 'schedules' | 'history';
 
 interface NavItem {
@@ -68,7 +69,7 @@ interface HistoryRow { id: number; action: string; user: string; timestamp: stri
 const API_BASE = 'https://localhost:5002/api';
 @Component({
   selector: 'app-admin-panel',
-  imports: [CommonModule, FormsModule, NavbarComponent,RouterLink],
+  imports: [CommonModule, FormsModule, NavbarComponent, RouterLink, GitConnector],
   templateUrl: './admin-panel.html',
   styleUrl: './admin-panel.css',
 })
@@ -80,7 +81,10 @@ export class AdminPanel {
     { key: 'users', label: 'Users', icon: 'M12 12c2.7 0 8 1.34 8 4v2H4v-2c0-2.66 5.3-4 8-4zm0-2a4 4 0 100-8 4 4 0 000 8z' },
     { key: 'department', label: 'Department', icon: 'M4 21V9l8-6 8 6v12h-6v-6H10v6H4z' },
     { key: 'schedules', label: 'Schedules', icon: 'M7 2v2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2h-2V2h-2v2H9V2H7zm12 8H5v10h14V10z' },
-    { key: 'history', label: 'History', icon: 'M13 3a9 9 0 100 18 9 9 0 000-18zm1 9V6h-2v7l5.2 3.1 1-1.6L14 12z' },
+    { key: 'history', label: 'History', icon: 'M13 3a9 9 0 100 18 9 9 0 000-18zm1 9V6h-2v7l5.2 3.1 1-1.6L14 12z' }
+
+
+
   ];
 expandedDepartmentId = signal<string | null>(null);
 

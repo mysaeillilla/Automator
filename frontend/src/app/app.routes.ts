@@ -8,6 +8,9 @@ import { ProcessDetailsComponent } from './process-details-component/process-det
 import { AuditlogComponent } from './auditlog-component/auditlog-component';
 import { Departments } from './departments/departments';
 import { SchedulesComponent } from './schedules-component/schedules-component';
+import { GitConnector } from './git-connector/git-connector';
+import { RepoList } from './repo-list/repo-list';
+import { GithubRepositories } from './github-repositories/github-repositories';
 
 export const routes: Routes = [
 
@@ -30,6 +33,9 @@ export const routes: Routes = [
   { path: 'history', component: AuditlogComponent },
   { path: 'departments', component: Departments },
   { path: 'schedules', component: SchedulesComponent },
+  { path: 'git', component: GitConnector },
+  { path: 'git/repos', component: RepoList },
+  { path: 'git/repos1', component: GithubRepositories },
 
 
 

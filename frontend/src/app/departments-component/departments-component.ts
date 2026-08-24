@@ -269,15 +269,31 @@ if (key === 'schedules') {
   // ===================== NAVIGATION =====================
 
   goBack(): void {
-    this.router.navigate(['/admin']);
+    this.router.navigate(['/departments']);
   }
 
   goToPanel(key: PanelKey): void {
-    this.router.navigate(['/admin'], {
-      state: {
-        selectedPanel: key
-      }
-    });
+ this.selected.set(key);
+
+  const routeMap: Record<PanelKey, string> = {
+    users: '/users',
+    department: '/departments',
+    schedules: '/schedules',
+    history: '/history'
+  };
+
+  this.router.navigate([routeMap[key]]);
+
+
+    // console.log(key);
+    // this.router.navigate(['/departments'], {
+    //   state: {
+    //     selectedPanel: key
+    //   }
+    // });
+
+
+    
   }
 
   // ===================== CREATE PROCESS =====================

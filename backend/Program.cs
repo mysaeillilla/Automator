@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using backend.Data;
 using backend.Entities;
+using backend.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -21,6 +22,10 @@ builder.Services.AddCors(options =>
     });
 });
 builder.Services.AddControllers();
+
+builder.Services.AddHttpClient<GitHubService>();
+
+
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();

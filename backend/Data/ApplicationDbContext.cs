@@ -1,4 +1,5 @@
 using backend.Entities;
+using backend.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace backend.Data;
@@ -12,8 +13,9 @@ public DbSet<ExecutionHistory> ExecutionHistories { get; set; }
  public DbSet<Departments> Departments { get; set; }
  public DbSet<Process> Process { get; set; }
  public DbSet<UserProcess> UserProcess { get; set; }
-
+public DbSet<GitHubConnection> GitHubConnections => Set<GitHubConnection>();
     public DbSet<UserDepartment> UserDepartments { get; set; }
+    public DbSet<GitHubRepositoryRecord> GitHubRepositories  { get; set; }
       protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
 modelBuilder.Entity<Process>()
@@ -27,7 +29,14 @@ modelBuilder.Entity<Process>()
 // User -> Department
 // Many-to-Many through UserDepartment
 // ------------------------------------
-
+  modelBuilder.Entity<GitHubConnection>(entity =>
+    {
+        entity.HasIndex(e => e.UserId).IsUnique();
+        entity.HasOne(e => e.User)
+              .WithOne()
+              .HasForeignKey<GitHubConnection>(e => e.UserId)
+              .OnDelete(DeleteBehavior.Cascade);
+    });
 modelBuilder.Entity<UserDepartment>()
     .HasOne(ud => ud.User)
     .WithMany(u => u.UserDepartments)
