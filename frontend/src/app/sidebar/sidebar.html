@@ -1,0 +1,23 @@
+<aside class="sidebar">
+  <div class="brand">
+    <span class="brand-dot"></span>
+
+    @if (isAdmin) {
+      <span class="brand-text">Admin Panel</span>
+    } @else {
+      <span class="brand-text">Dashboard</span>
+    }
+  </div>
+
+  <nav class="nav-list">
+    @for (item of navItems; track item.key) {
+      <button
+        class="nav-item"
+        [class.active]="selected() === item.key"
+        (click)="select(item.key)">
+        <svg viewBox="0 0 24 24" class="nav-icon"><path [attr.d]="item.icon"/></svg>
+        <span>{{ item.label }}</span>
+      </button>
+    }
+  </nav>
+</aside>

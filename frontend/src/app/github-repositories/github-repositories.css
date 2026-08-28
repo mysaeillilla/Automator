@@ -657,3 +657,51 @@
   }
 
 }
+.clone-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--text-secondary, #444);
+  background: var(--surface-subtle, #f5f5f7);
+  border: 1px solid var(--border-color, #d9d9df);
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.clone-btn:hover:not(:disabled) {
+  background: var(--surface-hover, #ebebef);
+  border-color: var(--border-color-hover, #c2c2ca);
+  color: var(--text-primary, #1a1a1a);
+}
+
+.clone-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.clone-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.clone-icon {
+  flex-shrink: 0;
+}
+
+.clone-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border-color, #d9d9df);
+  border-top-color: var(--text-secondary, #444);
+  border-radius: 50%;
+  animation: clone-spin 0.6s linear infinite;
+}
+
+@keyframes clone-spin {
+  to { transform: rotate(360deg); }
+}

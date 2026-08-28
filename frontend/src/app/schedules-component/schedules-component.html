@@ -6,48 +6,8 @@
   <!-- SIDEBAR -->
   <!-- ===================================================== -->
 
-  <aside class="sidebar">
+      <app-sidebar [isAdmin]="isAdmin()"   [active]="selected()"></app-sidebar>
 
-    <div class="brand">
-
-      <span class="brand-dot"></span>
-
-      <span class="brand-text">
-        {{ isAdmin() ? 'Admin Panel' : 'Dashboard' }}
-      </span>
-
-    </div>
-
-    <nav class="nav-list">
-
-      @for (item of navItems; track item.key) {
-
-        <button
-          type="button"
-          class="nav-item"
-          [class.active]="item.key === 'schedules'"
-          (click)="select(item.key)"
-        >
-
-          <svg
-            viewBox="0 0 24 24"
-            class="nav-icon"
-            aria-hidden="true"
-          >
-            <path [attr.d]="item.icon"></path>
-          </svg>
-
-          <span>
-            {{ item.label }}
-          </span>
-
-        </button>
-
-      }
-
-    </nav>
-
-  </aside>
 
 
   <!-- ===================================================== -->

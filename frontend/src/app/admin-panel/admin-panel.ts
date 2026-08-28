@@ -6,6 +6,7 @@ import { catchError, of } from 'rxjs';
 import { NavbarComponent } from "../navbar-component/navbar-component";
 import { Router, RouterLink } from '@angular/router';
 import { GitConnector } from "../git-connector/git-connector";
+import { Sidebar } from "../sidebar/sidebar";
 type PanelKey = 'users' | 'department' | 'schedules' | 'history';
 
 interface NavItem {
@@ -69,7 +70,7 @@ interface HistoryRow { id: number; action: string; user: string; timestamp: stri
 const API_BASE = 'https://localhost:5002/api';
 @Component({
   selector: 'app-admin-panel',
-  imports: [CommonModule, FormsModule, NavbarComponent, RouterLink, GitConnector],
+  imports: [CommonModule, FormsModule, NavbarComponent, RouterLink, GitConnector, Sidebar],
   templateUrl: './admin-panel.html',
   styleUrl: './admin-panel.css',
 })
@@ -103,7 +104,6 @@ deleteDepartmentError = signal<string | null>(null);
 processFormError = signal('');
 apiUrl = API_BASE;
 activeProcessDepartment = signal<any | null>(null);
-
 
 
 deleteDepartment(department: ApiDepartment): void {
