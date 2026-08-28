@@ -6,13 +6,17 @@ import { catchError, of, switchMap } from 'rxjs';
 export interface GitHubRepository {
   id: number;
   name: string;
-  fullName: string;
-  htmlUrl: string;
-  cloneUrl: string;
-  sshUrl: string;
-  defaultBranch: string;
+  full_name: string;
+  html_url: string;
+  clone_url: string;
+  ssh_url: string;
+  default_branch: string;
   private: boolean;
   description: string | null;
+  language: string | null;
+  forks_count: number;
+  stargazers_count: number;
+  updated_at: string;
   owner?: {
     login: string;
   };
@@ -120,7 +124,7 @@ export class RepoList implements OnInit {
           return of<GitHubRepository[]>([]);
         }),
         switchMap((repositories) => {
-          this.repositories.set(repositories);
+          this.repositories.set(repositories ?? []);
           this.loading.set(false);
           return of(repositories);
         })
@@ -150,5 +154,26 @@ export class RepoList implements OnInit {
           this.connecting.set(false);
         }
       });
+  }
+
+  // =========================================================
+  // Display helpers
+  // =========================================================
+
+  formatUpdatedAt(isoDate: string): string {
+    const updated = new Date(isoDate);
+    const now = new Date();
+    const diffMs = now.getTime() - updated.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays <= 0) return 'today';
+    if (diffDays === 1) return 'yesterday';
+    if (diffDays < 30) return `${diffDays}d ago`;
+
+    const diffMonths = Math.floor(diffDays / 30);
+    if (diffMonths < 12) return `${diffMonths}mo ago`;
+
+    const diffYears = Math.floor(diffMonths / 12);
+    return `${diffYears}y ago`;
   }
 }
