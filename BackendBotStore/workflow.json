@@ -1,0 +1,67 @@
+{
+  "flow_name":"Excel Reader",
+  "version":"1.1.0",
+  "packages":{
+    
+    "ExcelTools.ExcelReader":"D:\\projects\\BackendBotStore\\Packages\\ExcelOperations\\1.0.0\\ExcelOperations.dll",
+    "ClassName":"ExcelTools.ExcelReader"
+    
+  },
+  
+  "variables": {
+    "message": {
+      "value": "Hello World",
+      "type": "STRING",
+      "input": false,
+      "output": false
+    },
+    "file_Path": {
+      "value": "C:\\Users\\Admin\\Downloads\\Leave_Request_Automation.xlsx",
+      "type": "STRING",
+      "input": true,
+      "output": false
+    },
+    "sheet_name": {
+      "value": "Business Process",
+      "type": "STRING",
+      "input": true,
+      "output": false
+    },
+    "df_Employee_data": {
+      "value": [
+        {
+          "id": 0,
+          "Employee Name": "hoho",
+          "Age": 43
+        },
+        {
+          "id": 0,
+          "Employee Name": "gttgtg",
+          "Age": 32
+        }
+      ],
+      "type": {
+        "id": "NUMBER",
+        "Employee Name": "STRING",
+        "Age": "NUMBER"
+      },
+      "input": false,
+      "output": true
+    }
+  },
+  "Actions": {
+    "1": {
+      "ClassName": "ExcelTools.ExcelReader",
+      "FunctionName": "ReadExcel",
+      "Inputs": {
+        "filePath": "{{file_Path}}",
+        "sheetName": "{{sheet_name}}",
+        "headerStartRow": 1,
+        "skipEmptyRows": true
+      },
+       "outputs": {
+          "Response": "{{df_Employee_data}}"
+        }
+    }
+  }
+}

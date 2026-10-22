@@ -1,0 +1,207 @@
+<!-- Reusable JSON viewer: used for inputs, outputs and the workflow definition -->
+<ng-template #jsonBlock let-block>
+  @if (block) {
+    <div class="json">
+      <button class="json__copy" type="button" (click)="copy(block.text)">
+        {{ lastCopied() === block.text ? 'Copied' : 'Copy' }}
+      </button>
+      <pre class="json__pre">{{ block.preview }}</pre>
+      @if (block.truncated) {
+        <p class="json__note">
+          Preview truncated ({{ block.text.length }} characters in total). Use Copy to get the full value.
+        </p>
+      }
+    </div>
+  } @else {
+    <span class="muted">None</span>
+  }
+</ng-template>
+
+<section class="run">
+  <div class="run__nav">
+    <button class="btn" type="button" (click)="back.emit()">&larr; Back to activity</button>
+    <button class="btn" type="button" (click)="load()" [disabled]="loading()">Refresh</button>
+  </div>
+
+  @if (error()) {
+    <p class="message message--error" role="alert">{{ error() }}</p>
+  }
+
+  @if (detail(); as run) {
+    @let meta = statusMeta(run.status);
+
+    <div class="run__body" [class.run__body--loading]="loading()">
+      <!-- Title -->
+      <div class="run__header">
+        <h1 class="run__title">{{ flowInfo()?.name ?? 'Workflow run' }}</h1>
+        @if (flowInfo()?.version) {
+          <span class="badge">v{{ flowInfo()?.version }}</span>
+        }
+      </div>
+      <code class="run__id">{{ run.id }}</code>
+
+      <!-- Summary -->
+      <div class="stats">
+        <div class="stat">
+          <span class="stat__label">Status</span>
+          <span class="status">
+            <span [class]="'status__dot status__dot--' + meta.cssClass"></span>
+            {{ meta.label }}
+          </span>
+        </div>
+        <div class="stat">
+          <span class="stat__label">Started on</span>
+          <span>{{ run.startedAtUtc | date: 'yyyy-MM-dd HH:mm:ss' }}</span>
+        </div>
+        <div class="stat">
+          <span class="stat__label">Ended on</span>
+          @if (run.completedAtUtc) {
+            <span>{{ run.completedAtUtc | date: 'yyyy-MM-dd HH:mm:ss' }}</span>
+          } @else {
+            <span class="muted">--</span>
+          }
+        </div>
+        <div class="stat">
+          <span class="stat__label">Duration</span>
+          <span>{{ formatDuration(run.durationMs) }}</span>
+        </div>
+        <div class="stat">
+          <span class="stat__label">Actions</span>
+          <span>{{ run.completedActions }} / {{ run.totalActions }} completed</span>
+          <div class="progress__bar">
+            <div
+              class="progress__fill"
+              [class.progress__fill--failed]="meta.cssClass === 'failed'"
+              [style.width.%]="progress()"
+            ></div>
+          </div>
+        </div>
+      </div>
+
+      @if (run.error) {
+        <div class="message message--error" role="alert">
+          <strong>
+            Run failed@if (run.failedActionId !== null) { at action {{ run.failedActionId }} }
+          </strong>
+          <div>{{ run.error }}</div>
+        </div>
+      }
+
+      <!-- Actions -->
+      <h2 class="section__title">Actions</h2>
+      <ol class="actions">
+        @for (view of actionViews(); track view.action.id) {
+          @let action = view.action;
+          @let actionMeta = statusMeta(action.status);
+          @let key = 'action-' + action.id;
+          <li class="action">
+            <button
+              class="action__head"
+              type="button"
+              [attr.aria-expanded]="isOpen(key)"
+              (click)="toggle(key)"
+            >
+              <svg class="chevron" [class.chevron--open]="isOpen(key)" width="16" height="16"
+                   viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m7 4 6 6-6 6" />
+              </svg>
+              <span class="action__seq">{{ action.sequence }}</span>
+              <span class="action__name">
+                <span class="action__fn">{{ action.functionName }}</span>
+                <span class="action__class">{{ action.className }}</span>
+              </span>
+              <span class="status">
+                <span [class]="'status__dot status__dot--' + actionMeta.cssClass"></span>
+                {{ actionMeta.label }}
+              </span>
+              <span class="action__duration">{{ formatDuration(action.durationMs) }}</span>
+            </button>
+
+            @if (action.error) {
+              <p class="action__error">{{ action.error }}</p>
+            }
+
+            @if (isOpen(key)) {
+              <div class="action__body">
+                <div class="action__times">
+                  <span>Started: {{ action.startedAtUtc | date: 'yyyy-MM-dd HH:mm:ss.SSS' }}</span>
+                  @if (action.completedAtUtc) {
+                    <span>Ended: {{ action.completedAtUtc | date: 'yyyy-MM-dd HH:mm:ss.SSS' }}</span>
+                  }
+                </div>
+                <h3 class="sub__title">Inputs</h3>
+                <ng-container [ngTemplateOutlet]="jsonBlock" [ngTemplateOutletContext]="{ $implicit: view.inputs }" />
+                <h3 class="sub__title">Outputs</h3>
+                <ng-container [ngTemplateOutlet]="jsonBlock" [ngTemplateOutletContext]="{ $implicit: view.outputs }" />
+              </div>
+            }
+          </li>
+        } @empty {
+          <li class="muted">No actions were recorded for this run.</li>
+        }
+      </ol>
+
+      <!-- Logs -->
+      <h2 class="section__title">Logs</h2>
+      <div class="logs">
+        @for (line of logs(); track $index) {
+          <div class="log">
+            <span class="log__time">
+              @if (line.time) {
+                {{ line.time | date: 'HH:mm:ss.SSS' }}
+              }
+            </span>
+            <span class="log__message">{{ line.message }}</span>
+          </div>
+        } @empty {
+          <div class="muted">No logs.</div>
+        }
+      </div>
+
+      <!-- Run level data -->
+      <h2 class="section__title">Run data</h2>
+      <div class="collapsible">
+        <button class="collapsible__head" type="button" [attr.aria-expanded]="isOpen('run-inputs')" (click)="toggle('run-inputs')">
+          <svg class="chevron" [class.chevron--open]="isOpen('run-inputs')" width="16" height="16"
+               viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 4 6 6-6 6" /></svg>
+          Inputs
+        </button>
+        @if (isOpen('run-inputs')) {
+          <div class="collapsible__body">
+            <ng-container [ngTemplateOutlet]="jsonBlock" [ngTemplateOutletContext]="{ $implicit: runInputs() }" />
+          </div>
+        }
+      </div>
+      <div class="collapsible">
+        <button class="collapsible__head" type="button" [attr.aria-expanded]="isOpen('run-outputs')" (click)="toggle('run-outputs')">
+          <svg class="chevron" [class.chevron--open]="isOpen('run-outputs')" width="16" height="16"
+               viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 4 6 6-6 6" /></svg>
+          Outputs
+        </button>
+        @if (isOpen('run-outputs')) {
+          <div class="collapsible__body">
+            <ng-container [ngTemplateOutlet]="jsonBlock" [ngTemplateOutletContext]="{ $implicit: runOutputs() }" />
+          </div>
+        }
+      </div>
+      <div class="collapsible">
+        <button class="collapsible__head" type="button" [attr.aria-expanded]="isOpen('workflow')" (click)="toggle('workflow')">
+          <svg class="chevron" [class.chevron--open]="isOpen('workflow')" width="16" height="16"
+               viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 4 6 6-6 6" /></svg>
+          Workflow definition
+        </button>
+        @if (isOpen('workflow')) {
+          <div class="collapsible__body">
+            <ng-container [ngTemplateOutlet]="jsonBlock" [ngTemplateOutletContext]="{ $implicit: workflow() }" />
+          </div>
+        }
+      </div>
+    </div>
+  } @else if (loading()) {
+    <p class="state">Loading run details...</p>
+  }
+</section>

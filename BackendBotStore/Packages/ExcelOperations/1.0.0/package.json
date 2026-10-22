@@ -1,0 +1,29 @@
+{
+  "PackageName": "ExcelOperations.dll",
+  "Version": "1.0.0",
+  "ClassName": "ExcelTools.ExcelReader",
+  "Dependencies": "ClosedXML.dll,ClosedXML.Parser.dll,DocumentFormat.OpenXml.dll,ExcelNumberFormat.dll,SixLabors.Fonts.dll,RBush.dll,Newtonsoft.Json.dll",
+  "Actions": [
+    {
+      "ActionName": "ReadExcel",
+      "Inputs": {
+        "filePath": "string",
+        "sheetName": "string",
+        "headerStartRow": "int",
+        "skipEmptyRows": "bool"
+      },
+      "Outputs": {
+        "Response": "string"
+      }
+    },
+    {
+      "ActionName": "GetSheetNames",
+      "Inputs": {
+        "filePath": "string"
+      },
+      "Outputs": {
+        "Response": "string"
+      }
+    }
+  ]
+}

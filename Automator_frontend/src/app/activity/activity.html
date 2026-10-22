@@ -1,0 +1,167 @@
+
+
+@if (selectedRunId();as runId) {
+
+  <app-run-details [runId]="runId" (back)="closeRun()" />
+}
+
+@else {
+
+  <section class="activity">
+  <div class="activity__header">
+    <h1 class="activity__title">Activity</h1>
+  </div>
+
+  <!-- Filters -->
+  <div class="filters">
+    <label class="filter">
+      <span class="filter__label">Time filter:</span>
+      <select class="filter__select" [value]="timeRangeKey()" (change)="onTimeRangeChange($event)">
+        @for (range of timeRanges; track range.key) {
+          <option [value]="range.key">{{ range.label }}</option>
+        }
+      </select>
+    </label>
+
+    <label class="filter">
+      <span class="filter__label">Status:</span>
+      <select class="filter__select" [value]="statusFilter() ?? ''" (change)="onStatusChange($event)">
+        <option value="">All</option>
+        @for (option of statusOptions; track option.value) {
+          <option [value]="option.value">{{ option.label }}</option>
+        }
+      </select>
+    </label>
+  </div>
+
+  <!-- Table toolbar -->
+  <div class="toolbar">
+    <h2 class="toolbar__title">
+      Workflow runs ({{ runs().length }} of {{ totalCount() }})
+    </h2>
+    <button class="icon-btn" type="button" aria-label="Refresh" (click)="load()" [disabled]="loading()">
+      <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+           stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M16.500 10a6.500 6.500 0 1 1-2-4.700" />
+        <path d="M16.500 3v3.500H13" />
+      </svg>
+    </button>
+  </div>
+
+  @if (error()) {
+    <p class="message message--error" role="alert">{{ error() }}</p>
+  }
+
+  <div class="table-wrap" [class.table-wrap--loading]="loading()">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Run ID</th>
+          <th>Progress</th>
+          <th>Started on</th>
+          <th>Ended on</th>
+          <th>Duration</th>
+          <th>Error</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (run of runs(); track run.id) {
+          @let meta = statusMeta(run.status);
+          <tr>
+            <td>
+              <span class="status">
+                <span class="status__dot" [class]="'status__dot status__dot--' + meta.cssClass"></span>
+                {{ meta.label }}
+              </span>
+            </td>
+            <td>
+
+
+              <!-- <span class="link" [title]="run.id">{{ shortId(run.id) }}</span> -->
+
+ <button class="link" type="button" [title]="run.id" (click)="openRun(run.id)">
+    <!-- {{ shortId(run.id) }} -->
+{{run.id}}
+
+  </button>
+
+            </td>
+            <td>
+              <div class="progress" [title]="run.completedActions + ' of ' + run.totalActions + ' actions'">
+                <div class="progress__bar">
+                  <div
+                    class="progress__fill"
+                    [class.progress__fill--failed]="meta.cssClass === 'failed'"
+                    [style.width.%]="progressPercent(run)"
+                  ></div>
+                </div>
+                <span class="progress__text">{{ run.completedActions }} / {{ run.totalActions }}</span>
+              </div>
+            </td>
+            <td>
+              <div class="datetime">
+                <span>{{ run.startedAtUtc | date: 'HH:mm:ss' }}</span>
+                <span>{{ run.startedAtUtc | date: 'yyyy-MM-dd' }}</span>
+              </div>
+            </td>
+            <td>
+              @if (run.completedAtUtc) {
+                <div class="datetime">
+                  <span>{{ run.completedAtUtc | date: 'HH:mm:ss' }}</span>
+                  <span>{{ run.completedAtUtc | date: 'yyyy-MM-dd' }}</span>
+                </div>
+              } @else {
+                <span class="muted">--</span>
+              }
+            </td>
+            <td>{{ formatDuration(run.durationMs) }}</td>
+            <td class="error-cell">
+              @if (run.error) {
+                <span class="error-text" [title]="run.error">
+                  @if (run.failedActionId !== null) {
+                    <strong>Action {{ run.failedActionId }}:</strong>
+                  }
+                  {{ run.error }}
+                </span>
+              } @else {
+                <span class="muted">--</span>
+              }
+            </td>
+          </tr>
+        } @empty {
+          <tr>
+            <td class="empty" colspan="7">
+              {{ loading() ? 'Loading activity...' : 'No runs found for the selected filters.' }}
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination -->
+  <div class="pager">
+    <span class="pager__range">
+      {{ rangeStart() }}-{{ rangeEnd() }} of {{ totalCount() }}
+    </span>
+
+    <label class="pager__size">
+      Rows per page
+      <select [value]="pageSize()" (change)="onPageSizeChange($event)">
+        @for (size of pageSizes; track size) {
+          <option [value]="size">{{ size }}</option>
+        }
+      </select>
+    </label>
+
+    <button class="btn" type="button" (click)="goToPage(page() - 1)" [disabled]="page() <= 1 || loading()">
+      Previous
+    </button>
+    <span class="pager__page">Page {{ page() }} of {{ totalPages() || 1 }}</span>
+    <button class="btn" type="button" (click)="goToPage(page() + 1)" [disabled]="page() >= totalPages() || loading()">
+      Next
+    </button>
+  </div>
+</section>
+}

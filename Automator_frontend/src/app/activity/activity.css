@@ -1,0 +1,301 @@
+:host {
+  display: block;
+}
+
+.activity {
+  padding: 24px 32px;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  color: #323130;
+}
+
+.activity__header {
+  margin-bottom: 20px;
+}
+
+.activity__title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 300;
+}
+
+/* Filters */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  background: #ffffff;
+  border: 1px solid #c8c6c4;
+  border-radius: 2px;
+}
+
+.filter__label {
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.filter__select,
+.pager__size select {
+  border: none;
+  background: transparent;
+  color: #605e5c;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.filter__select:focus-visible,
+.pager__size select:focus-visible {
+  outline: 2px solid #0f6cbd;
+}
+
+/* Toolbar */
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.toolbar__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  color: #0f6cbd;
+  cursor: pointer;
+}
+
+.icon-btn:hover:not(:disabled) {
+  background-color: #f3f2f1;
+}
+
+.icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Messages */
+.message {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 2px;
+}
+
+.message--error {
+  background: #fde7e9;
+  color: #a4262c;
+}
+
+/* Table */
+.table-wrap {
+  overflow-x: auto;
+  background: #ffffff;
+  border: 1px solid #d2d0ce;
+  transition: opacity 0.15s ease;
+}
+
+.table-wrap--loading {
+  opacity: 0.6;
+}
+
+.table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+}
+
+.table th {
+  padding: 10px 12px;
+  background: #ededed;
+  border-right: 1px solid #d2d0ce;
+  font-size: 14px;
+  font-weight: 400;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.table th:last-child {
+  border-right: none;
+}
+
+.table td {
+  height: 52px;
+  padding: 6px 12px;
+  border-bottom: 1px solid #e1dfdd;
+  color: #605e5c;
+  vertical-align: middle;
+}
+
+.table tbody tr:hover {
+  background-color: #faf9f8;
+}
+
+/* Status */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #323130;
+  font-size: 14px;
+}
+
+.status__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #8a8886;
+}
+
+.status__dot--completed { background: #107c10; }
+.status__dot--running   { background: #0f6cbd; }
+.status__dot--pending   { background: #8a8886; }
+.status__dot--failed    { background: #d13438; }
+.status__dot--cancelled { background: #ca5010; }
+
+/* Run id */
+/* .link {
+  color: #0f6cbd;
+  font-family: Consolas, 'Courier New', monospace;
+  text-decoration: underline;
+  cursor: pointer;
+} */
+
+.link {
+  padding: 0;
+  background: none;
+  border: none;
+  color: #0f6cbd;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Progress */
+.progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progress__bar {
+  width: 80px;
+  height: 6px;
+  background: #e1dfdd;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress__fill {
+  height: 100%;
+  background: #107c10;
+}
+
+.progress__fill--failed {
+  background: #d13438;
+}
+
+.progress__text {
+  white-space: nowrap;
+}
+
+/* Dates */
+.datetime {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* Error */
+.error-cell {
+  max-width: 280px;
+}
+
+.error-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #a4262c;
+}
+
+.muted {
+  color: #a19f9d;
+}
+
+.empty {
+  height: 120px;
+  text-align: center;
+  color: #605e5c;
+}
+
+/* Pager */
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.pager__size {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #605e5c;
+}
+
+.pager__size select {
+  border: 1px solid #c8c6c4;
+  border-radius: 2px;
+  padding: 2px 4px;
+}
+
+.btn {
+  height: 28px;
+  padding: 0 12px;
+  background: #ffffff;
+  border: 1px solid #8a8886;
+  border-radius: 2px;
+  color: #323130;
+  font: inherit;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  background-color: #f3f2f1;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn:focus-visible,
+.icon-btn:focus-visible {
+  outline: 2px solid #0f6cbd;
+  outline-offset: 2px;
+}

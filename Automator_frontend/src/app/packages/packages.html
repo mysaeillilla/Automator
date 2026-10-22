@@ -1,0 +1,120 @@
+<section class="packages">
+  <div class="packages__header">
+    <h1 class="packages__title">Packages</h1>
+    <button class="btn" type="button" (click)="loadPackages()" [disabled]="loading()">
+      Refresh
+    </button>
+  </div>
+
+  <!-- Upload -->
+  <div class="upload">
+    <input
+      #fileInput
+      class="upload__input"
+      type="file"
+      accept=".zip,application/zip,application/x-zip-compressed"
+      (change)="onFileSelected($event)"
+    />
+    <button class="btn" type="button" (click)="fileInput.click()" [disabled]="uploading()">
+      Choose .zip file
+    </button>
+    <span class="upload__name">
+      {{ selectedFile()?.name ?? 'No file selected' }}
+    </span>
+    <button
+      class="btn btn--primary"
+      type="button"
+      (click)="upload()"
+      [disabled]="!selectedFile() || uploading()"
+    >
+      {{ uploading() ? 'Uploading...' : 'Upload package' }}
+    </button>
+  </div>
+
+  @if (uploadError()) {
+    <p class="message message--error" role="alert">{{ uploadError() }}</p>
+  }
+  @if (uploadSuccess()) {
+    <p class="message message--success" role="status">{{ uploadSuccess() }}</p>
+  }
+
+  <!-- List -->
+  @if (loading()) {
+    <p class="state">Loading packages...</p>
+  } @else if (loadError()) {
+    <p class="message message--error" role="alert">{{ loadError() }}</p>
+  } @else if (packages().length === 0) {
+    <p class="state">No packages installed yet. Upload a .zip to get started.</p>
+  } @else {
+    <ul class="package-list">
+      @for (pkg of packages(); track pkg.id) {
+        <li class="package">
+          <button
+            class="package__summary"
+            type="button"
+            [attr.aria-expanded]="expandedId() === pkg.id"
+            (click)="toggle(pkg.id)"
+          >
+            <svg class="package__chevron" [class.package__chevron--open]="expandedId() === pkg.id"
+                 width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m7 4 6 6-6 6" />
+            </svg>
+            <span class="package__name">{{ pkg.name }}</span>
+            <span class="badge">v{{ pkg.version }}</span>
+            <span class="package__meta">
+              {{ pkg.actions.length }} {{ pkg.actions.length === 1 ? 'action' : 'actions' }}
+            </span>
+          </button>
+
+          @if (expandedId() === pkg.id) {
+            <div class="package__details">
+              <h3 class="details__heading">Actions</h3>
+              @for (action of pkg.actions; track action.id) {
+                <div class="action">
+                  <div class="action__name">{{ action.name }}</div>
+                  <div class="action__cols">
+                    <div>
+                      <div class="action__label">Inputs</div>
+                      @for (input of entries(action.inputs); track input[0]) {
+                        <div class="param">
+                          <span class="param__name">{{ input[0] }}</span>
+                          <span class="param__type">{{ input[1] }}</span>
+                        </div>
+                      } @empty {
+                        <div class="param param--empty">None</div>
+                      }
+                    </div>
+                    <div>
+                      <div class="action__label">Outputs</div>
+                      @for (output of entries(action.outputs); track output[0]) {
+                        <div class="param">
+                          <span class="param__name">{{ output[0] }}</span>
+                          <span class="param__type">{{ output[1] }}</span>
+                        </div>
+                      } @empty {
+                        <div class="param param--empty">None</div>
+                      }
+                    </div>
+                  </div>
+                </div>
+              }
+
+              <h3 class="details__heading">Dependencies</h3>
+              <ul class="chips">
+                @for (dep of pkg.dependencies; track dep) {
+                  <li class="chip">{{ dep }}</li>
+                } @empty {
+                  <li class="param--empty">None</li>
+                }
+              </ul>
+
+              <h3 class="details__heading">File path</h3>
+              <code class="path">{{ pkg.filePath }}</code>
+            </div>
+          }
+        </li>
+      }
+    </ul>
+  }
+</section>

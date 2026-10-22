@@ -1,0 +1,67 @@
+
+# ==============================
+# Angular Frontend
+# ==============================
+
+Automator_frontend/node_modules/
+Automator_frontend/dist/
+Automator_frontend/.angular/
+Automator_frontend/coverage/
+Automator_frontend/.sass-cache/
+
+# Environment files
+Automator_frontend/.env
+Automator_frontend/.env.*
+
+# Keep example environment files
+!Automator_frontend/.env.example
+
+# ==============================
+# .NET Web API
+# ==============================
+
+BackendBotStore/bin/
+BackendBotStore/obj/
+BackendBotStore/out/
+
+# Visual Studio files
+BackendBotStore/.vs/
+BackendBotStore/*.user
+BackendBotStore/*.suo
+
+# Publish output
+BackendBotStore/publish/
+
+# ==============================
+# IDE and Editor
+# ==============================
+
+.vscode/
+.idea/
+
+# ==============================
+# Operating System
+# ==============================
+
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ==============================
+# Logs and Temporary Files
+# ==============================
+
+*.log
+*.tmp
+*.temp
+
+# ==============================
+# Secrets and Local Configuration
+# ==============================
+
+**/appsettings.Local.json
+**/appsettings.Development.Local.json
+**/secrets.json
+
+# User-specific configuration
+*.local

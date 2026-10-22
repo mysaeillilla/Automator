@@ -1,0 +1,22 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.container {
+  display: flex;
+  flex: 1;
+  min-height: 0; /* lets the content area scroll instead of growing the page */
+}
+
+app-side-bar {
+  flex-shrink: 0; /* keeps the sidebar's own width (228px, or 48px when collapsed) */
+}
+
+.content {
+  flex: 1;          /* takes all the width the sidebar leaves */
+  min-width: 0;     /* stops wide content (like the activity table) from pushing the layout sideways */
+  overflow: auto;   /* the page scrolls here, not the whole window */
+  background-color: #faf9f8;
+}
