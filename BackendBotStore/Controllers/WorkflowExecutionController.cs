@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using BackendBotStore.Data;      // <- namespace of your DbContext
 using BackendBotStore.Entities;
 using BackendBotStore.Services;
@@ -29,6 +30,8 @@ public class WorkflowExecutionController : ControllerBase
     /// <summary>
     /// Starts a saved workflow (looked up by its id in the Workflows table)
     /// and returns immediately with an execution id.
+    /// Package DLL paths left blank in the workflow JSON are resolved from the Packages table
+    /// (matched by package name) before the workflow is handed to the runner.
     /// </summary>
     [HttpPost("execute/{workflowId:int}")]
     public async Task<IActionResult> Execute(int workflowId)
@@ -37,10 +40,31 @@ public class WorkflowExecutionController : ControllerBase
         if (workflow is null)
             return NotFound(new { success = false, error = $"Workflow {workflowId} not found." });
 
+        // 1. Resolve package DLL paths into the workflow JSON.
+        string resolvedJson;
+        try
+        {
+            var (json, missing) = await ResolvePackagePathsAsync(workflow.WorkflowJson);
+
+            if (missing.Count > 0)
+                return UnprocessableEntity(new
+                {
+                    success = false,
+                    error = $"Package(s) not found or DLL missing on disk: {string.Join(", ", missing)}."
+                });
+
+            resolvedJson = json;
+        }
+        catch (JsonException)
+        {
+            return UnprocessableEntity(new { success = false, error = $"Stored JSON for workflow {workflowId} is invalid." });
+        }
+
+        // 2. Count actions from the resolved JSON.
         int totalActions;
         try
         {
-            using var document = JsonDocument.Parse(workflow.WorkflowJson);
+            using var document = JsonDocument.Parse(resolvedJson);
             totalActions = CountActions(document.RootElement);
         }
         catch (JsonException)
@@ -50,8 +74,9 @@ public class WorkflowExecutionController : ControllerBase
 
         var execution = new WorkflowExecutionStatus
         {
-            // Snapshot of exactly what is being run, even if the workflow is re-uploaded later.
-            WorkflowJson = workflow.WorkflowJson,
+            // Snapshot of exactly what is being run (with resolved package paths),
+            // even if the workflow is re-uploaded later.
+            WorkflowJson = resolvedJson,
             Status = ExecutionState.Pending,
             TotalActions = totalActions
         };
@@ -59,7 +84,7 @@ public class WorkflowExecutionController : ControllerBase
         _db.WorkflowExecutions.Add(execution);
         await _db.SaveChangesAsync();
 
-        _runner.Start(execution.Id, workflow.WorkflowJson);
+        _runner.Start(execution.Id, resolvedJson);
 
         return AcceptedAtAction(nameof(GetStatus), new { id = execution.Id }, new
         {
@@ -141,6 +166,72 @@ public class WorkflowExecutionController : ControllerBase
     }
 
     // ── helpers ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Looks at the "packages" object of the workflow JSON. Every key is treated as a Package name;
+    /// it is matched against Packages.Name and its value is replaced with the package's FilePath (DLL path).
+    /// If several versions of a package exist, the most recently registered one (highest Id) is used.
+    /// Returns the rewritten JSON plus the names that could not be resolved.
+    /// </summary>
+    private async Task<(string Json, List<string> Missing)> ResolvePackagePathsAsync(string workflowJson)
+    {
+        var missing = new List<string>();
+
+        if (JsonNode.Parse(workflowJson) is not JsonObject root)
+            return (workflowJson, missing);
+
+        // Find the "packages" property (case-insensitive).
+        string? packagesKey = null;
+        foreach (var prop in root)
+        {
+            if (string.Equals(prop.Key, "packages", StringComparison.OrdinalIgnoreCase))
+            {
+                packagesKey = prop.Key;
+                break;
+            }
+        }
+
+        if (packagesKey is null || root[packagesKey] is not JsonObject packages)
+            return (workflowJson, missing);   // no packages section, nothing to resolve
+
+        // Collect package names, skipping legacy metadata keys.
+        var packageNames = new List<string>();
+        foreach (var prop in packages)
+        {
+            var key = prop.Key;
+            if (string.IsNullOrWhiteSpace(key)) continue;
+            if (string.Equals(key, "name", StringComparison.OrdinalIgnoreCase)) continue;
+            if (string.Equals(key, "ClassName", StringComparison.OrdinalIgnoreCase)) continue;
+            packageNames.Add(key);
+        }
+
+        if (packageNames.Count == 0)
+            return (workflowJson, missing);
+
+        var found = await _db.Packages.AsNoTracking()
+            .Where(p => packageNames.Contains(p.Name))
+            .Select(p => new { p.Id, p.Name, p.FilePath })
+            .ToListAsync();
+
+        var latestByName = found
+            .GroupBy(p => p.Name)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(p => p.Id).First().FilePath);
+
+        foreach (var name in packageNames)
+        {
+            if (!latestByName.TryGetValue(name, out var path) ||
+                string.IsNullOrWhiteSpace(path) ||
+                !System.IO.File.Exists(path))
+            {
+                missing.Add(name);
+                continue;
+            }
+
+            packages[name] = path;
+        }
+
+        return (root.ToJsonString(), missing);
+    }
 
     private static JsonElement? ParseJson(string? json) =>
         string.IsNullOrWhiteSpace(json) ? null : JsonSerializer.Deserialize<JsonElement>(json);

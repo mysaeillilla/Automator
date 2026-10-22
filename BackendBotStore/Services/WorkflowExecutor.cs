@@ -12,7 +12,10 @@ namespace BackendBotStore.Services;
 
 public sealed class WorkflowDefinition
 {
-    /// <summary>"Namespace.ClassName" -> DLL path</summary>
+    /// <summary>
+    /// Package name -> DLL path (paths are filled in by the API before execution).
+    /// The legacy shape "Namespace.ClassName" -> DLL path is still supported.
+    /// </summary>
     public Dictionary<string, string> Packages { get; set; } = new();
     public Dictionary<string, WorkflowVariable> Variables { get; set; } = new();
     public Dictionary<string, WorkflowAction> Actions { get; set; } = new();
@@ -60,6 +63,7 @@ public class WorkflowExecutor
 
     private readonly Dictionary<string, Assembly> _assemblyCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<Type, object> _instanceCache = new();
+    private readonly Dictionary<string, Type> _typeCache = new(StringComparer.Ordinal);
 
     public Dictionary<string, string> Packages { get; set; } = new();
     public Dictionary<string, WorkflowVariable> Variables { get; set; } = new();
@@ -239,19 +243,66 @@ public class WorkflowExecutor
     //  Package / reflection helpers
     // ─────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Finds the .NET type for an action's ClassName.
+    /// 1. Legacy shape: Packages["Namespace.ClassName"] = dll path -> load that DLL directly.
+    /// 2. Current shape: Packages["PackageName"] = dll path -> search every listed DLL for the class.
+    /// </summary>
     private Type ResolveType(string className)
     {
-        if (!Packages.TryGetValue(className, out var dllPath))
-            throw new InvalidOperationException($"No package registered for class '{className}'.");
+        if (string.IsNullOrWhiteSpace(className))
+            throw new InvalidOperationException("Action has no ClassName.");
 
-        var assembly = LoadAssembly(dllPath);
+        if (_typeCache.TryGetValue(className, out var cached))
+            return cached;
 
-        var type = assembly.GetType(className, throwOnError: false, ignoreCase: false)
-                   ?? assembly.GetExportedTypes().FirstOrDefault(t =>
-                          t.FullName == className || t.Name == className);
+        // 1. Legacy: the key is the class name itself.
+        if (Packages.TryGetValue(className, out var directPath) && !string.IsNullOrWhiteSpace(directPath))
+        {
+            var type = FindTypeInAssembly(LoadAssembly(directPath), className)
+                       ?? throw new InvalidOperationException($"Class '{className}' not found in '{directPath}'.");
+            _typeCache[className] = type;
+            return type;
+        }
 
-        return type ?? throw new InvalidOperationException(
-            $"Class '{className}' not found in '{dllPath}'.");
+        // 2. Search all package DLLs.
+        var searched = new List<string>();
+        foreach (var (packageName, dllPath) in Packages)
+        {
+            if (string.IsNullOrWhiteSpace(dllPath)) continue;   // unresolved / metadata entry
+
+            var type = FindTypeInAssembly(LoadAssembly(dllPath), className);
+            if (type is not null)
+            {
+                Log($"Class '{className}' resolved from package '{packageName}'.");
+                _typeCache[className] = type;
+                return type;
+            }
+
+            searched.Add($"{packageName} ({dllPath})");
+        }
+
+        throw new InvalidOperationException(searched.Count == 0
+            ? $"No package registered for class '{className}'. The workflow has no packages with a DLL path."
+            : $"Class '{className}' was not found in any registered package. Searched: {string.Join("; ", searched)}.");
+    }
+
+    private static Type? FindTypeInAssembly(Assembly assembly, string className)
+    {
+        var type = assembly.GetType(className, throwOnError: false, ignoreCase: false);
+        if (type is not null) return type;
+
+        try
+        {
+            return assembly.GetExportedTypes().FirstOrDefault(t =>
+                t.FullName == className || t.Name == className);
+        }
+        catch (ReflectionTypeLoadException ex)
+        {
+            // Some types failed to load (missing dependency); still search the ones that did.
+            return ex.Types.FirstOrDefault(t =>
+                t is not null && t.IsPublic && (t.FullName == className || t.Name == className));
+        }
     }
 
     private Assembly LoadAssembly(string dllPath)
@@ -464,6 +515,7 @@ public class WorkflowExecutor
         LastError = null;
         Logs.Clear();
         _instanceCache.Clear();
+        _typeCache.Clear();
         _sequence = 0;
     }
 

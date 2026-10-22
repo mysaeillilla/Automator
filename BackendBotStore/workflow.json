@@ -1,20 +1,10 @@
 {
-  "flow_name":"Excel Reader",
-  "version":"1.1.0",
-  "packages":{
-    
-    "ExcelTools.ExcelReader":"D:\\projects\\BackendBotStore\\Packages\\ExcelOperations\\1.0.0\\ExcelOperations.dll",
-    "ClassName":"ExcelTools.ExcelReader"
-    
+  "flow_name": "Excel Reader",
+  "version": "1.0.0",
+  "packages": {
+    "ExcelOperations": ""
   },
-  
   "variables": {
-    "message": {
-      "value": "Hello World",
-      "type": "STRING",
-      "input": false,
-      "output": false
-    },
     "file_Path": {
       "value": "C:\\Users\\Admin\\Downloads\\Leave_Request_Automation.xlsx",
       "type": "STRING",
@@ -28,18 +18,7 @@
       "output": false
     },
     "df_Employee_data": {
-      "value": [
-        {
-          "id": 0,
-          "Employee Name": "hoho",
-          "Age": 43
-        },
-        {
-          "id": 0,
-          "Employee Name": "gttgtg",
-          "Age": 32
-        }
-      ],
+      "value": [],
       "type": {
         "id": "NUMBER",
         "Employee Name": "STRING",
@@ -59,9 +38,9 @@
         "headerStartRow": 1,
         "skipEmptyRows": true
       },
-       "outputs": {
-          "Response": "{{df_Employee_data}}"
-        }
+      "outputs": {
+        "Response": "{{df_Employee_data}}"
+      }
     }
   }
 }
