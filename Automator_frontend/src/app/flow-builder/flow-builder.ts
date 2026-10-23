@@ -170,269 +170,92 @@ export function generateWorkflow(name: string, version: string, nodes: FlowNode[
   selector: 'app-flow-builder',
   standalone: true,
   imports: [FormsModule],
-  template: `
-  <header class="bar">
-  <strong>Flow builder</strong>
-  <span class="grow"></span>
-
-  <button
-    (click)="download()"
-    [disabled]="!nodes().length">
-    Download JSON
-  </button>
-
-  <button
-    class="submit-btn"
-    (click)="submitWorkflow()"
-    [disabled]="!nodes().length || submitting()">
-    {{ submitting() ? 'Submitting...' : 'Submit to API' }}
-  </button>
-</header>
-
-@if (submitMessage()) {
-  <div
-    class="submit-message"
-    [class.success]="submitSuccess()"
-    [class.failure]="!submitSuccess()">
-    {{ submitMessage() }}
-  </div>
-}
-
-  <div class="layout">
-    <!-- LEFT: actions grouped by package -->
-    <aside class="side">
-      <input class="search" placeholder="Search actions" [ngModel]="search()" (ngModelChange)="search.set($event)" />
-      @if (loading()) { <p class="hint">Loading packages…</p> }
-      @if (error()) { <p class="err">{{ error() }}</p> }
-      @for (g of groups(); track g.pkg.id) {
-        <details open>
-          <summary>{{ g.pkg.name }} <small>v{{ g.pkg.version }}</small></summary>
-          @for (a of g.actions; track a.id) {
-            <div class="item" draggable="true"
-                 (dragstart)="onDragStart($event, g.pkg, a)"
-                 (dblclick)="addNode(g.pkg, a, 60 + nodes().length * 30, 60 + nodes().length * 30)"
-                 [title]="'Drag onto the canvas (or double-click)'">
-              {{ a.name }}
-              <small>{{ keys(a.inputs).length }} in · {{ keys(a.outputs).length }} out</small>
-            </div>
-          }
-        </details>
-      }
-    </aside>
-
-    <!-- CENTER: canvas -->
-    <main class="canvas" (dragover)="$event.preventDefault()" (drop)="onDrop($event)" (pointerdown)="selectedId.set(null)">
-      <div class="surface" #surface>
-        <svg class="wires">
-          @for (c of connections(); track c.id) {
-            <path class="wire-hit" [attr.d]="path(c)" (click)="removeConnection(c.id)" />
-            <path class="wire" [attr.d]="path(c)" />
-          }
-          @if (pending(); as p) { <path class="wire temp" [attr.d]="pendingPath()" /> }
-        </svg>
-
-        @for (n of nodes(); track n.id) {
-          <div class="node" [class.sel]="n.id === selectedId()" [style.left.px]="n.x" [style.top.px]="n.y"
-               [style.width.px]="NODE_W" (pointerdown)="$event.stopPropagation(); select(n.id)">
-            <div class="port in" title="Drop a connection here" (pointerup)="finishConnect(n.id)"></div>
-            <div class="head" (pointerdown)="startDrag($event, n)">
-              <span class="step">{{ orderOf(n.id) }}</span>
-              <span class="title"><b>{{ n.action.name }}</b><small>{{ n.pkg.name }}</small></span>
-            </div>
-            <div class="body">
-              @for (k of keys(n.action.inputs); track k) {
-                <div class="row"><span>{{ k }}</span><em>{{ n.action.inputs[k] }}</em></div>
-              }
-            </div>
-            <div class="port out" title="Drag to another node" (pointerdown)="startConnect($event, n)"></div>
-          </div>
-        }
-
-        @if (!nodes().length) {
-          <div class="empty">Drag an action from the left panel to start your flow.<br>Drag from a node's right dot to the next node's left dot to set the run order.</div>
-        }
-      </div>
-    </main>
-
-    <!-- RIGHT: properties / JSON -->
-    <aside class="side right">
-      <div class="tabs">
-        <button [class.on]="tab() === 'props'" (click)="tab.set('props')">Properties</button>
-        <button [class.on]="tab() === 'json'" (click)="tab.set('json')">Workflow JSON</button>
-      </div>
-
-      @if (tab() === 'props') {
-        <label>Flow name <input [ngModel]="flowName()" (ngModelChange)="flowName.set($event)" /></label>
-        <label>Version <input [ngModel]="flowVersion()" (ngModelChange)="flowVersion.set($event)" /></label>
-        <hr />
-
-        @if (selected(); as n) {
-          <h4>{{ n.action.name }} <small>{{ n.pkg.name }}</small></h4>
-          <h5>Inputs</h5>
-          @for (k of keys(n.action.inputs); track k) {
-            @let b = n.inputs[k];
-            <div class="field">
-              <div class="flabel">{{ k }} <small>{{ mapType(n.action.inputs[k]) }}</small></div>
-              <div class="inline">
-                <select [ngModel]="b.mode" (ngModelChange)="set(b, 'mode', $event)">
-                  <option value="literal">Value</option>
-                  <option value="variable">Variable</option>
-                </select>
-                @if (b.mode === 'literal' && mapType(n.action.inputs[k]) === 'BOOLEAN') {
-                  <select [ngModel]="b.value" (ngModelChange)="set(b, 'value', $event)">
-                    <option value="true">true</option><option value="false">false</option>
-                  </select>
-                } @else {
-                  <input [placeholder]="b.mode === 'variable' ? 'variable name' : 'value'"
-                         [ngModel]="b.value" (ngModelChange)="set(b, 'value', $event)" />
-                }
-              </div>
-              @if (b.mode === 'variable') {
-                <input class="sub" placeholder="initial value of variable" [ngModel]="b.varValue" (ngModelChange)="set(b, 'varValue', $event)" />
-              }
-            </div>
-          }
-          <h5>Outputs → variable</h5>
-          @for (k of keys(n.action.outputs); track k) {
-            <div class="field">
-              <div class="flabel">{{ k }} <small>{{ mapType(n.action.outputs[k]) }}</small></div>
-              <input [ngModel]="n.outputs[k]" (ngModelChange)="n.outputs[k] = $event; touch()" />
-            </div>
-          }
-          <button class="danger" (click)="removeNode(n.id)">Delete action</button>
-        } @else {
-          <p class="hint">Select an action on the canvas to edit its inputs and outputs. Click a wire to delete it.</p>
-        }
-      } @else {
-        <div class="inline"><button (click)="copy()">{{ copied() ? 'Copied' : 'Copy' }}</button></div>
-        <pre class="json">{{ json() }}</pre>
-      }
-    </aside>
-  </div>
-  `,
-  styles: [`
-    :host { display:flex; flex-direction:column; height:100vh; font:13px/1.4 "Segoe UI", system-ui, sans-serif; color:#1d2433;
-      --ink:#1d2433; --muted:#6b7385; --line:#d9dde6; --paper:#f4f5f8; --accent:#2457d6; --accent-soft:#e6edfd; }
-    .bar { display:flex; align-items:center; gap:12px; padding:8px 14px; background:#fff; border-bottom:1px solid var(--line); }
-    .grow { flex:1; }
-    .layout { flex:1; display:grid; grid-template-columns:240px 1fr 320px; min-height:0; }
-    .side { background:#fff; border-right:1px solid var(--line); padding:10px; overflow:auto; }
-    .side.right { border-right:0; border-left:1px solid var(--line); }
-    input, select, button { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink); min-width:0; }
-    input:focus-visible, select:focus-visible, button:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
-    button { cursor:pointer; } button:disabled { opacity:.5; cursor:default; }
-    .search, label input { width:100%; box-sizing:border-box; }
-    label { display:block; margin-bottom:8px; color:var(--muted); } label input { margin-top:3px; color:var(--ink); }
-    summary { cursor:pointer; font-weight:600; padding:8px 2px; } summary small, h4 small, .flabel small, .item small { color:var(--muted); font-weight:400; margin-left:6px; }
-    .item { display:flex; justify-content:space-between; align-items:center; padding:7px 9px; margin:3px 0; border:1px solid var(--line); border-radius:6px; background:var(--paper); cursor:grab; }
-    .item:hover { border-color:var(--accent); background:var(--accent-soft); }
-    .hint { color:var(--muted); } .err { color:#b42318; }
-    .canvas { overflow:auto; background:var(--paper); }
-    .surface { position:relative; width:3000px; height:2000px;
-      background-image:radial-gradient(#c3c8d4 1px, transparent 1px); background-size:20px 20px; }
-    .wires { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
-    .wire { fill:none; stroke:var(--accent); stroke-width:2; }
-    .wire.temp { stroke-dasharray:5 4; }
-    .wire-hit { fill:none; stroke:transparent; stroke-width:14; pointer-events:stroke; cursor:pointer; }
-    .node { position:absolute; background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:0 1px 3px rgba(20,30,60,.12); }
-    .node.sel { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-soft), 0 1px 3px rgba(20,30,60,.12); }
-    .head { height:44px; box-sizing:border-box; display:flex; align-items:center; gap:8px; padding:0 12px; cursor:move; border-bottom:1px solid var(--line); user-select:none; }
-    .step { width:22px; height:22px; border-radius:50%; background:var(--accent); color:#fff; display:grid; place-items:center; font-size:11px; flex:none; }
-    .title { display:flex; flex-direction:column; min-width:0; } .title small { color:var(--muted); }
-    .body { padding:6px 12px 8px; } .row { display:flex; justify-content:space-between; gap:8px; color:var(--muted); font-size:12px; } .row em { font-style:normal; opacity:.7; }
-    .port { position:absolute; top:15px; width:14px; height:14px; border-radius:50%; background:#fff; border:2px solid var(--accent); }
-    .port.in { left:-8px; } .port.out { right:-8px; cursor:crosshair; } .port:hover { background:var(--accent); }
-    .empty { position:absolute; left:80px; top:80px; color:var(--muted); max-width:360px; }
-    .tabs { display:flex; gap:4px; margin-bottom:10px; } .tabs button { flex:1; } .tabs .on { background:var(--accent); color:#fff; border-color:var(--accent); }
-    h4 { margin:4px 0; } h5 { margin:12px 0 4px; color:var(--muted); font-weight:600; }
-    .field { margin-bottom:8px; } .flabel { margin-bottom:3px; } .inline { display:flex; gap:6px; } .inline input { flex:1; } .sub { width:100%; box-sizing:border-box; margin-top:4px; }
-    hr { border:0; border-top:1px solid var(--line); margin:10px 0; }
-    .danger { margin-top:12px; color:#b42318; border-color:#f0c4bf; }
-    .json { background:#10162a; color:#d6e1ff; padding:10px; border-radius:8px; overflow:auto; font:12px/1.45 Consolas, monospace; max-height:calc(100vh - 150px); }
-    @media (max-width:1000px) { .layout { grid-template-columns:200px 1fr 260px; } }
-  `],
+  templateUrl: './flow-builder.html',
+  styleUrl: './flow-builder.css',
 })
 export class FlowBuilderComponent implements OnInit {
   private http = inject(HttpClient);
   private surface = viewChild.required<ElementRef<HTMLElement>>('surface');
 
-
   submitting = signal(false);
-submitMessage = signal('');
-submitSuccess = signal(false);
+  submitMessage = signal('');
+  submitSuccess = signal(false);
 
-submitWorkflow(): void {
-  if (this.submitting()) {
-    return;
-  }
-
-  const flowName = this.flowName().trim();
-  const flowVersion = this.flowVersion().trim();
-
-  if (!flowName || !flowVersion) {
-    this.submitSuccess.set(false);
-    this.submitMessage.set('Flow name and version are required.');
-    return;
-  }
-
-  if (!this.nodes().length) {
-    this.submitSuccess.set(false);
-    this.submitMessage.set('Please add at least one action.');
-    return;
-  }
-
-  // Generate the workflow JSON from the current canvas.
-  const workflow = generateWorkflow(
-    flowName,
-    flowVersion,
-    this.nodes(),
-    this.connections()
-  );
-
-  this.submitting.set(true);
-  this.submitMessage.set('');
-
-  this.http.post(
-    WORKFLOW_UPLOAD_URL,
-    workflow
-  ).subscribe({
-    next: (response: any) => {
-      this.submitSuccess.set(true);
-
-      this.submitMessage.set(
-        response?.message ??
-        response?.Message ??
-        'Workflow submitted successfully.'
-      );
-
-      this.submitting.set(false);
-    },
-
-    error: (error) => {
-      this.submitSuccess.set(false);
-
-      if (error.status === 409) {
-        this.submitMessage.set(
-          error.error?.error ??
-          `Workflow '${flowName}' version '${flowVersion}' already exists.`
-        );
-      } else if (error.status === 0) {
-        this.submitMessage.set(
-          'Unable to connect to the API. Check the server and HTTPS certificate.'
-        );
-      } else {
-        this.submitMessage.set(
-          error.error?.error ??
-          error.error?.message ??
-          `Failed to submit workflow. HTTP status: ${error.status}`
-        );
-      }
-
-      this.submitting.set(false);
+  submitWorkflow(): void {
+    if (this.submitting()) {
+      return;
     }
-  });
-}
 
+    const flowName = this.flowName().trim();
+    const flowVersion = this.flowVersion().trim();
+
+    if (!flowName || !flowVersion) {
+      this.submitSuccess.set(false);
+      this.submitMessage.set('Flow name and version are required.');
+      return;
+    }
+
+    if (!this.nodes().length) {
+      this.submitSuccess.set(false);
+      this.submitMessage.set('Please add at least one action.');
+      return;
+    }
+
+    // Generate the workflow JSON from the current canvas.
+    const workflow = generateWorkflow(
+      flowName,
+      flowVersion,
+      this.nodes(),
+      this.connections()
+    );
+
+    this.submitting.set(true);
+    this.submitMessage.set('');
+
+    this.http.post(
+      WORKFLOW_UPLOAD_URL,
+      workflow
+    ).subscribe({
+      next: (response: any) => {
+        this.submitSuccess.set(true);
+
+        this.submitMessage.set(
+          response?.message ??
+          response?.Message ??
+          'Workflow submitted successfully.'
+        );
+
+        this.submitting.set(false);
+      },
+
+      error: (error) => {
+        this.submitSuccess.set(false);
+
+        if (error.status === 409) {
+          this.submitMessage.set(
+            error.error?.error ??
+            `Workflow '${flowName}' version '${flowVersion}' already exists.`
+          );
+        } else if (error.status === 0) {
+          this.submitMessage.set(
+            'Unable to connect to the API. Check the server and HTTPS certificate.'
+          );
+        } else {
+          this.submitMessage.set(
+            error.error?.error ??
+            error.error?.message ??
+            `Failed to submit workflow. HTTP status: ${error.status}`
+          );
+        }
+
+        this.submitting.set(false);
+      }
+    });
+  }
+setOutput(n: FlowNode, key: string, value: string) {
+  n.outputs[key] = value;
+  this.touch();
+}
   readonly NODE_W = 220;
   readonly PORT_Y = 22;
   readonly mapType = mapType;
