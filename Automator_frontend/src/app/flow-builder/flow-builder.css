@@ -1,0 +1,26 @@
+.submit-btn {
+  background: #2457d6;
+  color: #fff;
+  border-color: #2457d6;
+  font-weight: 600;
+}
+
+.submit-btn:hover:not(:disabled) {
+  background: #1b45ad;
+}
+
+.submit-message {
+  padding: 10px 14px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--line);
+}
+
+.submit-message.success {
+  color: #067647;
+  background: #ecfdf3;
+}
+
+.submit-message.failure {
+  color: #b42318;
+  background: #fef3f2;
+}

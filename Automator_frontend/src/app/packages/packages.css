@@ -2,74 +2,50 @@
   display: block;
 }
 
+/* ==========================================================================
+   Base Container & Header
+   ========================================================================== */
 .packages {
-  max-width: 960px;
-  padding: 24px;
+  padding: 24px 32px;
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 13px;
   color: #323130;
+  background-color: #faf9f8;
+  min-height: 100vh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .packages__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .packages__title {
   margin: 0;
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 600;
+  color: #201f1e;
 }
 
-/* Buttons */
-.btn {
-  height: 32px;
-  padding: 0 14px;
-  background: #ffffff;
-  border: 1px solid #8a8886;
-  border-radius: 2px;
-  color: #323130;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.btn:hover:not(:disabled) {
-  background-color: #f3f2f1;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn--primary {
-  background-color: #0f6cbd;
-  border-color: #0f6cbd;
-  color: #ffffff;
-}
-
-.btn--primary:hover:not(:disabled) {
-  background-color: #115ea3;
-}
-
-.btn:focus-visible,
-.package__summary:focus-visible {
-  outline: 2px solid #0f6cbd;
-  outline-offset: 2px;
-}
-
-/* Upload */
+/* ==========================================================================
+   Upload Toolbar
+   ========================================================================== */
 .upload {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
-  margin-bottom: 16px;
+  flex-wrap: wrap;
+  padding: 16px;
   background: #ffffff;
-  border: 1px dashed #8a8886;
-  border-radius: 4px;
+  border: 1px solid #d2d0ce;
+  border-radius: 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .upload__input {
@@ -77,67 +53,136 @@
 }
 
 .upload__name {
+  color: #605e5c;
+  font-style: italic;
   flex: 1;
-  min-width: 120px;
+  min-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
-  color: #605e5c;
 }
 
-/* Messages */
-.message {
-  margin: 0 0 16px;
-  padding: 8px 12px;
+/* ==========================================================================
+   Buttons
+   ========================================================================== */
+.btn {
+  height: 32px;
+  padding: 0 16px;
+  background: #ffffff;
+  border: 1px solid #8a8886;
   border-radius: 2px;
+  color: #323130;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.1s ease, border-color 0.1s ease;
+}
+
+.btn:hover:not(:disabled) {
+  background-color: #f3f2f1;
+  border-color: #323130;
+}
+
+.btn:active:not(:disabled) {
+  background-color: #edebe9;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn:focus-visible {
+  outline: 2px solid #0f6cbd;
+  outline-offset: 2px;
+}
+
+.btn--primary {
+  background: #0f6cbd;
+  border-color: #0f6cbd;
+  color: #ffffff;
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: #115ea3;
+  border-color: #115ea3;
+}
+
+.btn--primary:active:not(:disabled) {
+  background: #0b5a9a;
+  border-color: #0b5a9a;
+}
+
+/* ==========================================================================
+   Messages & States
+   ========================================================================== */
+.message {
+  margin: 0;
+  padding: 12px 16px;
+  border-radius: 2px;
+  background: #f3f2f1;
+  border: 1px solid #d2d0ce;
+  color: #323130;
   font-size: 14px;
 }
 
 .message--error {
   background: #fde7e9;
+  border-color: #f1707b;
   color: #a4262c;
 }
 
 .message--success {
   background: #dff6dd;
+  border-color: #107c10;
   color: #107c10;
 }
 
 .state {
+  text-align: center;
   color: #605e5c;
-  font-size: 14px;
+  font-style: italic;
+  padding: 40px;
+  background: #ffffff;
+  border: 1px solid #d2d0ce;
+  border-radius: 2px;
 }
 
-/* Package list */
+/* ==========================================================================
+   Package List & Accordion Items
+   ========================================================================== */
 .package-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
 }
 
 .package {
   background: #ffffff;
-  border: 1px solid #e1dfdd;
-  border-radius: 4px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  border: 1px solid #d2d0ce;
+  border-radius: 2px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .package__summary {
+  width: 100%;
+  background: #ffffff;
+  border: none;
+  padding: 12px 16px;
   display: flex;
   align-items: center;
   gap: 12px;
-  width: 100%;
-  padding: 12px 16px;
-  background: transparent;
-  border: none;
-  color: inherit;
-  font-size: 14px;
-  text-align: left;
   cursor: pointer;
+  text-align: left;
+  font: inherit;
 }
 
 .package__summary:hover {
@@ -145,56 +190,75 @@
 }
 
 .package__chevron {
+  transition: transform 0.2s ease;
+  color: #605e5c;
   flex-shrink: 0;
-  transition: transform 0.15s ease;
 }
 
 .package__chevron--open {
   transform: rotate(90deg);
+  color: #0f6cbd;
 }
 
 .package__name {
+  font-weight: 600;
+  color: #323130;
+  font-size: 14px;
+}
+
+.badge {
+  padding: 2px 8px;
+  background: #deecf9;
+  border-radius: 10px;
+  color: #0f6cbd;
+  font-size: 12px;
   font-weight: 600;
 }
 
 .package__meta {
   margin-left: auto;
   color: #605e5c;
-}
-
-.badge {
-  padding: 1px 8px;
-  background: #deecf9;
-  border-radius: 10px;
-  color: #0f6cbd;
   font-size: 12px;
 }
 
-/* Details */
+/* ==========================================================================
+   Package Details Expanded Section
+   ========================================================================== */
 .package__details {
-  padding: 4px 16px 16px 44px;
+  padding: 16px;
+  background: #faf9f8;
   border-top: 1px solid #edebe9;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .details__heading {
-  margin: 16px 0 8px;
+  margin: 4px 0 2px 0;
   font-size: 13px;
   font-weight: 600;
-  color: #605e5c;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  color: #605e5c;
+  letter-spacing: 0.5px;
 }
 
+/* ==========================================================================
+   Actions inside Package
+   ========================================================================== */
 .action {
-  padding: 10px 12px;
-  margin-bottom: 8px;
-  background: #faf9f8;
-  border-radius: 4px;
+  background: #ffffff;
+  border: 1px solid #d2d0ce;
+  border-radius: 2px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .action__name {
-  margin-bottom: 8px;
   font-weight: 600;
+  color: #201f1e;
+  font-size: 13px;
 }
 
 .action__cols {
@@ -203,58 +267,78 @@
   gap: 16px;
 }
 
+@media (max-width: 768px) {
+  .action__cols {
+    grid-template-columns: 1fr;
+  }
+}
+
 .action__label {
-  margin-bottom: 4px;
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 600;
   color: #605e5c;
+  margin-bottom: 4px;
+  text-transform: uppercase;
 }
 
 .param {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
-  padding: 2px 0;
-  font-size: 13px;
+  padding: 4px 8px;
+  background: #f3f2f1;
+  border-radius: 2px;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.param__name {
+  font-weight: 600;
+  color: #323130;
 }
 
 .param__type {
-  font-family: Consolas, 'Courier New', monospace;
   color: #0f6cbd;
+  font-family: Consolas, Monaco, monospace;
 }
 
 .param--empty {
-  color: #a19f9d;
-  font-size: 13px;
+  color: #605e5c;
+  font-style: italic;
+  font-size: 12px;
+  padding: 4px 0;
+  background: transparent;
 }
 
+/* ==========================================================================
+   Dependencies Chips & File Path
+   ========================================================================== */
 .chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
 }
 
 .chip {
   padding: 2px 10px;
   background: #f3f2f1;
-  border-radius: 10px;
+  border: 1px solid #d2d0ce;
+  border-radius: 12px;
   font-size: 12px;
+  color: #323130;
 }
 
 .path {
-  display: block;
-  padding: 6px 10px;
-  background: #f3f2f1;
-  border-radius: 2px;
-  font-family: Consolas, 'Courier New', monospace;
+  font-family: Consolas, Monaco, monospace;
   font-size: 12px;
+  color: #252423;
+  background: #f3f2f1;
+  border: 1px solid #d2d0ce;
+  padding: 6px 10px;
+  border-radius: 2px;
   word-break: break-all;
-}
-
-@media (max-width: 600px) {
-  .action__cols {
-    grid-template-columns: 1fr;
-  }
+  width: fit-content;
+  display: block;
 }

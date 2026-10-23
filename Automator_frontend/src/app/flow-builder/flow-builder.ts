@@ -6,6 +6,8 @@ import { HttpClient } from '@angular/common/http';
 // and set this to '/api/Packages' to avoid CORS / self-signed cert issues.
 const API_URL = 'https://localhost:5002/api/Packages';
 
+const WORKFLOW_UPLOAD_URL =
+  'https://localhost:5002/api/Workflows/upload';
 // ───────────────────────────── Models ─────────────────────────────
 export interface PackageAction {
   id: number;
@@ -170,10 +172,31 @@ export function generateWorkflow(name: string, version: string, nodes: FlowNode[
   imports: [FormsModule],
   template: `
   <header class="bar">
-    <strong>Flow builder</strong>
-    <span class="grow"></span>
-    <button (click)="download()" [disabled]="!nodes().length">Download JSON</button>
-  </header>
+  <strong>Flow builder</strong>
+  <span class="grow"></span>
+
+  <button
+    (click)="download()"
+    [disabled]="!nodes().length">
+    Download JSON
+  </button>
+
+  <button
+    class="submit-btn"
+    (click)="submitWorkflow()"
+    [disabled]="!nodes().length || submitting()">
+    {{ submitting() ? 'Submitting...' : 'Submit to API' }}
+  </button>
+</header>
+
+@if (submitMessage()) {
+  <div
+    class="submit-message"
+    [class.success]="submitSuccess()"
+    [class.failure]="!submitSuccess()">
+    {{ submitMessage() }}
+  </div>
+}
 
   <div class="layout">
     <!-- LEFT: actions grouped by package -->
@@ -332,6 +355,83 @@ export function generateWorkflow(name: string, version: string, nodes: FlowNode[
 export class FlowBuilderComponent implements OnInit {
   private http = inject(HttpClient);
   private surface = viewChild.required<ElementRef<HTMLElement>>('surface');
+
+
+  submitting = signal(false);
+submitMessage = signal('');
+submitSuccess = signal(false);
+
+submitWorkflow(): void {
+  if (this.submitting()) {
+    return;
+  }
+
+  const flowName = this.flowName().trim();
+  const flowVersion = this.flowVersion().trim();
+
+  if (!flowName || !flowVersion) {
+    this.submitSuccess.set(false);
+    this.submitMessage.set('Flow name and version are required.');
+    return;
+  }
+
+  if (!this.nodes().length) {
+    this.submitSuccess.set(false);
+    this.submitMessage.set('Please add at least one action.');
+    return;
+  }
+
+  // Generate the workflow JSON from the current canvas.
+  const workflow = generateWorkflow(
+    flowName,
+    flowVersion,
+    this.nodes(),
+    this.connections()
+  );
+
+  this.submitting.set(true);
+  this.submitMessage.set('');
+
+  this.http.post(
+    WORKFLOW_UPLOAD_URL,
+    workflow
+  ).subscribe({
+    next: (response: any) => {
+      this.submitSuccess.set(true);
+
+      this.submitMessage.set(
+        response?.message ??
+        response?.Message ??
+        'Workflow submitted successfully.'
+      );
+
+      this.submitting.set(false);
+    },
+
+    error: (error) => {
+      this.submitSuccess.set(false);
+
+      if (error.status === 409) {
+        this.submitMessage.set(
+          error.error?.error ??
+          `Workflow '${flowName}' version '${flowVersion}' already exists.`
+        );
+      } else if (error.status === 0) {
+        this.submitMessage.set(
+          'Unable to connect to the API. Check the server and HTTPS certificate.'
+        );
+      } else {
+        this.submitMessage.set(
+          error.error?.error ??
+          error.error?.message ??
+          `Failed to submit workflow. HTTP status: ${error.status}`
+        );
+      }
+
+      this.submitting.set(false);
+    }
+  });
+}
 
   readonly NODE_W = 220;
   readonly PORT_Y = 22;

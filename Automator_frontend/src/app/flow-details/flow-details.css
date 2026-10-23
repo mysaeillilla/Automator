@@ -1,326 +1,394 @@
-:host {
-  display: block;
+/* ==========================================================================
+   Neomorphic Design System Variables
+   ========================================================================== */
+:root {
+  --bg-color: #e0e5ec;
+  --text-main: #333740;
+  --text-muted: #8b9cb3;
+  --accent-color: #4361ee;
+  --accent-hover: #3a50d9;
+  --error-color: #ff6b6b;
+  --error-bg: #ffe3e3;
+
+  /* Neomorphic Shadows */
+  --shadow-light: #ffffff;
+  --shadow-dark: #a3b1c6;
+
+  --neo-flat: 6px 6px 12px var(--shadow-dark), -6px -6px 12px var(--shadow-light);
+  --neo-flat-sm: 3px 3px 6px var(--shadow-dark), -3px -3px 6px var(--shadow-light);
+  --neo-pressed: inset 3px 3px 6px var(--shadow-dark), inset -3px -3px 6px var(--shadow-light);
+  --neo-btn: 5px 5px 10px var(--shadow-dark), -5px -5px 10px var(--shadow-light);
+  --neo-btn-active: inset 2px 2px 5px var(--shadow-dark), inset -2px -2px 5px var(--shadow-light);
 }
 
+/* ==========================================================================
+   Base Flow Container
+   ========================================================================== */
 .flow {
-  max-width: 1000px;
-  padding: 24px 32px;
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-  font-size: 13px;
-  color: #323130;
+  background-color: var(--bg-color);
+  color: var(--text-main);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  padding: 24px;
+  min-height: 100vh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
+/* ==========================================================================
+   Navigation & Action Bars
+   ========================================================================== */
 .flow__nav {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  margin-bottom: 20px;
+  gap: 16px;
+  margin-bottom: 8px;
 }
 
+.expand {
+  display: flex;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+/* ==========================================================================
+   Buttons
+   ========================================================================== */
+.btn {
+  background-color: var(--bg-color);
+  color: var(--text-main);
+  border: none;
+  border-radius: 12px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--neo-btn);
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+}
+
+.btn:hover {
+  color: var(--accent-color);
+}
+
+.btn:active, .btn:focus-visible {
+  box-shadow: var(--neo-btn-active);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.btn--small {
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: 8px;
+}
+
+/* ==========================================================================
+   Messages & States
+   ========================================================================== */
+.message {
+  background-color: var(--bg-color);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: var(--neo-pressed);
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.message--error {
+  background-color: var(--error-bg);
+  color: #c92a2a;
+  box-shadow: inset 2px 2px 5px rgba(201, 42, 42, 0.2), inset -2px -2px 5px #ffffff;
+}
+
+.state {
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 40px;
+}
+
+/* ==========================================================================
+   Flow Body & Header Card
+   ========================================================================== */
 .flow__body {
-  transition: opacity 0.15s ease;
+  background-color: var(--bg-color);
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: var(--neo-flat);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  transition: opacity 0.3s ease;
 }
 
 .flow__body--loading {
   opacity: 0.6;
+  pointer-events: none;
 }
 
 .flow__header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
 }
 
 .flow__title {
   margin: 0;
   font-size: 24px;
-  font-weight: 300;
+  font-weight: 700;
+}
+
+.badge {
+  background-color: var(--bg-color);
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-color);
+  box-shadow: var(--neo-flat-sm);
 }
 
 .meta {
   display: flex;
   flex-wrap: wrap;
   gap: 16px;
-  margin: 6px 0 16px;
-  color: #605e5c;
+  font-size: 13px;
+  color: var(--text-muted);
+  border-bottom: 1px solid rgba(163, 177, 198, 0.4);
+  padding-bottom: 14px;
 }
 
-.badge {
-  padding: 1px 8px;
-  background: #deecf9;
-  border-radius: 10px;
-  color: #0f6cbd;
-  font-size: 12px;
-}
-
-.state {
-  color: #605e5c;
-}
-
-.muted {
-  color: #a19f9d;
-}
-
-.message {
-  margin: 0 0 16px;
-  padding: 8px 12px;
-  border-radius: 2px;
-}
-
-.message--error {
-  background: #fde7e9;
-  color: #a4262c;
-}
-
-/* Buttons */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  height: 28px;
-  padding: 0 12px;
-  background: #ffffff;
-  border: 1px solid #8a8886;
-  border-radius: 2px;
-  color: #323130;
-  font: inherit;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.btn:hover:not(:disabled) {
-  background-color: #f3f2f1;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn--small {
-  height: 24px;
-  padding: 0 10px;
-  font-size: 12px;
-}
-
-.expand {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.btn:focus-visible,
-.section__head:focus-visible,
-.item__head:focus-visible {
-  outline: 2px solid #0f6cbd;
-  outline-offset: 2px;
-}
-
-/* Sections */
+/* ==========================================================================
+   Collapsible Sections
+   ========================================================================== */
 .section {
+  background-color: var(--bg-color);
+  border-radius: 16px;
+  box-shadow: var(--neo-flat-sm);
+  overflow: hidden;
   margin-bottom: 12px;
-  background: #ffffff;
-  border: 1px solid #e1dfdd;
-  border-radius: 4px;
 }
 
 .section__head {
+  width: 100%;
+  background-color: var(--bg-color);
+  border: none;
+  padding: 14px 18px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 12px 14px;
-  background: transparent;
-  border: none;
-  color: inherit;
-  font: inherit;
+  gap: 12px;
   font-size: 15px;
   font-weight: 600;
-  text-align: left;
+  color: var(--text-main);
   cursor: pointer;
+  text-align: left;
+  transition: background 0.2s;
 }
 
 .section__head:hover {
-  background-color: #faf9f8;
+  color: var(--accent-color);
 }
 
 .section__body {
-  padding: 0 14px 14px;
+  padding: 16px;
+  border-top: 1px solid rgba(163, 177, 198, 0.2);
 }
 
 .count {
-  padding: 0 8px;
-  background: #f3f2f1;
+  margin-left: auto;
+  background-color: var(--bg-color);
+  padding: 2px 8px;
   border-radius: 10px;
-  color: #605e5c;
   font-size: 12px;
-  font-weight: 400;
+  color: var(--text-muted);
+  box-shadow: var(--neo-pressed);
 }
 
+/* ==========================================================================
+   Chevrons & Animations
+   ========================================================================== */
 .chevron {
-  flex-shrink: 0;
-  transition: transform 0.15s ease;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  color: var(--text-muted);
 }
 
 .chevron--open {
   transform: rotate(90deg);
+  color: var(--accent-color);
 }
 
-/* Lists */
+/* ==========================================================================
+   Lists & Items
+   ========================================================================== */
 .list {
-  margin: 0;
-  padding: 0 14px 12px;
   list-style: none;
+  margin: 0;
+  padding: 12px 18px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .kv {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  padding: 8px 0;
-  border-top: 1px solid #edebe9;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--bg-color);
+  border-radius: 8px;
+  box-shadow: var(--neo-pressed);
+  font-size: 13px;
 }
 
 .kv__key {
-  min-width: 160px;
   font-weight: 600;
 }
 
-.kv__value {
-  flex: 1;
-  min-width: 0;
-  color: #605e5c;
-  font-family: Consolas, 'Courier New', monospace;
+.kv__value, code {
+  font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
   font-size: 12px;
-  word-break: break-all;
+  color: var(--accent-color);
 }
 
 .item {
-  border-top: 1px solid #edebe9;
+  background: var(--bg-color);
+  border-radius: 12px;
+  box-shadow: var(--neo-flat-sm);
+  overflow: hidden;
 }
 
 .item__head {
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 12px 14px;
   display: flex;
   align-items: center;
   gap: 10px;
-  width: 100%;
-  padding: 10px 4px;
-  background: transparent;
-  border: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
   cursor: pointer;
+  text-align: left;
+  font-size: 14px;
 }
 
 .item__head:hover {
-  background-color: #faf9f8;
-}
-
-.item__name {
-  font-size: 14px;
-  font-weight: 600;
+  background-color: rgba(255, 255, 255, 0.4);
 }
 
 .item__seq {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 22px;
-  height: 22px;
-  background: #f3f2f1;
-  border-radius: 50%;
+  font-weight: 700;
+  color: var(--text-muted);
   font-size: 12px;
+}
+
+.item__name {
+  font-weight: 600;
 }
 
 .item__preview {
-  flex: 1;
-  min-width: 0;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+  max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #605e5c;
-  text-align: right;
 }
 
 .item__body {
-  padding: 4px 4px 14px 28px;
+  padding: 16px;
+  background-color: var(--bg-color);
+  box-shadow: var(--neo-pressed);
+  margin: 8px;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
+/* ==========================================================================
+   Chips & Badges inside Items
+   ========================================================================== */
 .chip {
-  padding: 1px 8px;
-  border-radius: 10px;
+  padding: 2px 8px;
+  border-radius: 6px;
   font-size: 11px;
-  white-space: nowrap;
+  font-weight: 600;
+  box-shadow: var(--neo-flat-sm);
 }
 
 .chip--type {
-  background: #f3f2f1;
-  color: #323130;
+  color: #2b8a3e;
+  background: var(--bg-color);
 }
 
 .chip--input {
-  background: #deecf9;
-  color: #0f6cbd;
+  color: #1864ab;
+  background: var(--bg-color);
 }
 
 .chip--output {
-  background: #dff6dd;
-  color: #107c10;
+  color: #5f3dc4;
+  background: var(--bg-color);
 }
 
+/* ==========================================================================
+   Subsections & Inputs/Outputs Grid
+   ========================================================================== */
 .sub__title {
-  margin: 12px 0 6px;
-  color: #605e5c;
-  font-size: 12px;
-  font-weight: 600;
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.5px;
 }
 
-.plain {
-  display: block;
-  padding: 6px 10px;
-  background: #f3f2f1;
-  border-radius: 2px;
-  font-family: Consolas, 'Courier New', monospace;
-  font-size: 12px;
-  word-break: break-all;
-}
-
-/* Action inputs and outputs */
 .io {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 24px;
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .io {
+    grid-template-columns: 1fr;
+  }
 }
 
 .param {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
-  padding: 3px 0;
+  padding: 6px 10px;
+  background: var(--bg-color);
+  border-radius: 6px;
+  box-shadow: var(--neo-pressed);
+  font-size: 12px;
+  margin-bottom: 6px;
 }
 
 .param__name {
   font-weight: 600;
 }
 
-.param__value {
-  min-width: 0;
-  color: #605e5c;
-  font-family: Consolas, 'Courier New', monospace;
-  font-size: 12px;
-  word-break: break-all;
-  text-align: right;
-}
-
-/* Values like {{file_Path}} that point at a variable */
 .param__value--ref {
-  color: #0f6cbd;
+  color: var(--accent-color);
+  font-style: italic;
 }
 
-@media (max-width: 700px) {
-  .io {
-    grid-template-columns: 1fr;
-  }
+.muted {
+  color: var(--text-muted);
+  font-size: 13px;
+  font-style: italic;
 }

@@ -1,10 +1,19 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, effect, inject, OnDestroy, signal, untracked } from '@angular/core';
-import { Workflow } from '../workflow';
+import {
+  Component,
+  computed,
+  effect,
+  inject,
+  OnDestroy,
+  signal,
+  untracked,
+} from '@angular/core';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { RouterLink } from '@angular/router';
 import { debounceTime, distinctUntilChanged, map, Subscription } from 'rxjs';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { HttpErrorResponse } from '@angular/common/http';
-import { RouterLink } from '@angular/router';
+
+import { Workflow } from '../workflow';
 
 export interface WorkflowResponse {
   id: number;
@@ -14,23 +23,37 @@ export interface WorkflowResponse {
   createdBy: string;
 }
 
+interface WorkflowExecutionResponse {
+  executionId: string;
+  workflowId: number;
+  workflowName: string;
+  workflowVersion: string;
+  status: string;
+  statusUrl: string;
+}
 
 @Component({
-  imports: [DatePipe,RouterLink],
   selector: 'app-my-flows',
+  imports: [DatePipe, RouterLink],
   styleUrl: './my-flows.css',
   templateUrl: './my-flows.html',
 })
 export class MyFlows implements OnDestroy {
   private readonly workflowService = inject(Workflow);
+  private readonly http = inject(HttpClient);
+
   private subscription?: Subscription;
 
-  // What the user has typed (updates instantly so the input stays responsive)
   readonly searchText = signal('');
   readonly latestOnly = signal(false);
 
-  // The search text that is actually sent to the API, 300 ms after typing stops
-  private readonly appliedName = toSignal(
+  readonly runningId = signal<number | null>(null);
+  readonly executionMessage = signal('');
+  readonly executionError = signal(false);
+  readonly executionId = signal<string | null>(null);
+  readonly executionStatus = signal<string | null>(null);
+
+  readonly appliedName = toSignal(
     toObservable(this.searchText).pipe(
       map((text) => text.trim()),
       debounceTime(300),
@@ -43,13 +66,15 @@ export class MyFlows implements OnDestroy {
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);
 
-  readonly hasFilters = computed(() => this.appliedName() !== '' || this.latestOnly());
+  readonly hasFilters = computed(
+    () => this.appliedName() !== '' || this.latestOnly(),
+  );
 
   constructor() {
-    // Runs once on start and again whenever the applied name or the checkbox changes
     effect(() => {
       const name = this.appliedName();
       const latestOnly = this.latestOnly();
+
       untracked(() => this.load(name, latestOnly));
     });
   }
@@ -58,30 +83,39 @@ export class MyFlows implements OnDestroy {
     this.subscription?.unsubscribe();
   }
 
-  load(name: string = this.appliedName(), latestOnly: boolean = this.latestOnly()): void {
-    // Cancel any in-flight request so an older response can't overwrite a newer one
+  load(
+    name: string = this.appliedName(),
+    latestOnly: boolean = this.latestOnly(),
+  ): void {
     this.subscription?.unsubscribe();
+
     this.loading.set(true);
     this.error.set(null);
 
-    this.subscription = this.workflowService.getAll(name, latestOnly).subscribe({
-      next: (flows) => {
-        this.flows.set(flows);
-        this.loading.set(false);
-      },
-      error: (err: HttpErrorResponse) => {
-        this.error.set(this.toMessage(err));
-        this.loading.set(false);
-      },
-    });
+    this.subscription = this.workflowService
+      .getAll(name, latestOnly)
+      .subscribe({
+        next: (flows) => {
+          this.flows.set(flows);
+          this.loading.set(false);
+        },
+        error: (err: HttpErrorResponse) => {
+          this.error.set(this.toMessage(err));
+          this.loading.set(false);
+        },
+      });
   }
 
   onSearch(event: Event): void {
-    this.searchText.set((event.target as HTMLInputElement).value);
+    this.searchText.set(
+      (event.target as HTMLInputElement).value,
+    );
   }
 
   onLatestOnlyChange(event: Event): void {
-    this.latestOnly.set((event.target as HTMLInputElement).checked);
+    this.latestOnly.set(
+      (event.target as HTMLInputElement).checked,
+    );
   }
 
   clearFilters(): void {
@@ -89,12 +123,75 @@ export class MyFlows implements OnDestroy {
     this.latestOnly.set(false);
   }
 
+  runFlow(flow: WorkflowResponse): void {
+    if (this.runningId() !== null) {
+      return;
+    }
+
+    this.runningId.set(flow.id);
+    this.executionMessage.set('');
+    this.executionError.set(false);
+    this.executionId.set(null);
+    this.executionStatus.set(null);
+
+    const url =
+      `https://localhost:5002/api/WorkflowExecution/execute/${flow.id}`;
+
+    this.http.post<WorkflowExecutionResponse>(url, '').subscribe({
+      next: (response) => {
+        this.runningId.set(null);
+        this.executionId.set(response.executionId);
+        this.executionStatus.set(response.status);
+        this.executionMessage.set(
+          `Execution started for ${response.workflowName} ` +
+          `(v${response.workflowVersion}).`,
+        );
+      },
+      error: (err: HttpErrorResponse) => {
+        this.runningId.set(null);
+        this.executionError.set(true);
+
+        if (err.status === 0) {
+          this.executionMessage.set(
+            'Cannot connect to the execution API. Check the API server, ' +
+            'HTTPS certificate, and CORS configuration.',
+          );
+        } else {
+          this.executionMessage.set(
+            err.error?.error ??
+            err.error?.detail ??
+            `Failed to start workflow. HTTP status: ${err.status}.`,
+          );
+        }
+      },
+    });
+  }
+
+  editFlow(flow: WorkflowResponse): void {
+    // Dummy edit function. Replace with editor navigation later.
+    console.log('Edit workflow:', flow);
+    alert(`Edit Flow clicked for "${flow.name}" (ID: ${flow.id}).`);
+  }
+
   private toMessage(err: HttpErrorResponse): string {
-    if (err.status === 0) return 'Cannot reach the server.';
+    if (err.status === 0) {
+      return 'Cannot reach the server.';
+    }
+
     const body = err.error;
-    if (typeof body === 'string' && body.length > 0) return body;
-    if (body?.detail) return body.detail;
-    if (body?.title) return body.title;
+
+    if (typeof body === 'string' && body.length > 0) {
+      return body;
+    }
+
+    if (body?.detail) {
+      return body.detail;
+    }
+
+    if (body?.title) {
+      return body.title;
+    }
+
     return 'Could not load flows.';
   }
 }

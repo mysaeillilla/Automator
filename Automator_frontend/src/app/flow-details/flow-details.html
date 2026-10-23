@@ -2,6 +2,37 @@
   <div class="flow__nav">
     <a class="btn" routerLink="/myflows">&larr; Back to My Flows</a>
     <button class="btn" type="button" (click)="load()" [disabled]="loading()">Refresh</button>
+<div class="flow__nav">
+  <a class="btn" routerLink="/myflows">
+    &larr; Back to My Flows
+  </a>
+
+
+</div>
+
+@if (executionMessage()) {
+  <div
+    class="message"
+    [class.message--error]="executionError()"
+    role="status">
+
+    {{ executionMessage() }}
+
+    @if (executionId()) {
+      <div>
+        Execution ID:
+        <code>{{ executionId() }}</code>
+      </div>
+    }
+
+    @if (executionStatus()) {
+      <div>
+        Status: <strong>{{ executionStatus() }}</strong>
+      </div>
+    }
+  </div>
+}
+
   </div>
 
   @if (error()) {

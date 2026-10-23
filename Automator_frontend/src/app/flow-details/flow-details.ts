@@ -6,11 +6,18 @@ import { DatePipe } from '@angular/common';
 import { Workflow, WorkflowDetailResponse } from '../workflow';
 import { map, Subscription } from 'rxjs';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { HttpErrorResponse } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 
 
 type Obj = Record<string, unknown>;
-
+interface WorkflowExecutionResponse {
+  executionId: string;
+  workflowId: number;
+  workflowName: string;
+  workflowVersion: string;
+  status: string;
+  statusUrl: string;
+}
 interface PackageView {
   name: string;
   path: string;
@@ -85,11 +92,81 @@ export class FlowDetails implements OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly workflowService = inject(Workflow);
   private subscription?: Subscription;
+private readonly http = inject(HttpClient);
 
+readonly running = signal(false);
+readonly executionMessage = signal('');
+readonly executionError = signal(false);
+readonly executionId = signal<string | null>(null);
+readonly executionStatus = signal<string | null>(null);
   private readonly flowId = toSignal(this.route.paramMap.pipe(map((params) => params.get('id'))), {
     initialValue: this.route.snapshot.paramMap.get('id'),
   });
+runFlow(): void {
+  const flow = this.detail();
 
+  if (!flow || this.running()) {
+    return;
+  }
+
+  const workflowId = flow.id;
+
+  this.running.set(true);
+  this.executionMessage.set('');
+  this.executionError.set(false);
+  this.executionId.set(null);
+  this.executionStatus.set(null);
+
+  const url =
+    `https://localhost:5002/api/WorkflowExecution/execute/${workflowId}`;
+
+  this.http.post<WorkflowExecutionResponse>(url, '').subscribe({
+    next: (response) => {
+      this.running.set(false);
+
+      this.executionId.set(response.executionId);
+      this.executionStatus.set(response.status);
+
+      this.executionMessage.set(
+        `Execution started for ${response.workflowName} (v${response.workflowVersion}).`
+      );
+    },
+
+    error: (err: HttpErrorResponse) => {
+      this.running.set(false);
+      this.executionError.set(true);
+
+      if (err.status === 0) {
+        this.executionMessage.set(
+          'Cannot connect to the execution API. Check the server, HTTPS certificate, and CORS configuration.'
+        );
+      } else {
+        this.executionMessage.set(
+          err.error?.error ??
+          err.error?.detail ??
+          `Failed to start workflow. HTTP status: ${err.status}.`
+        );
+      }
+    }
+  });
+}
+
+editFlow(): void {
+  const flow = this.detail();
+
+  if (!flow) {
+    return;
+  }
+
+  // Dummy implementation; replace with navigation to your editor.
+  console.log('Edit workflow:', {
+    id: flow.id,
+    name: flow.name,
+    version: flow.version
+  });
+
+  alert(`Edit Flow clicked for "${flow.name}" (ID: ${flow.id}).`);
+}
   readonly detail = signal<WorkflowDetailResponse | null>(null);
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);

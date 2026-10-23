@@ -1,3 +1,4 @@
+
 <section class="flows">
   <div class="flows__header">
     <h1 class="flows__title">My Flows</h1>
@@ -6,11 +7,26 @@
   <!-- Toolbar -->
   <div class="toolbar">
     <label class="search">
-      <svg class="search__icon" width="16" height="16" viewBox="0 0 20 20" fill="none"
-           stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+      <svg
+        class="search__icon"
+        width="16"
+        height="16"
+        viewBox="0 0 20 20"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        aria-hidden="true"
+      >
         <circle cx="12" cy="8" r="5.5" />
-        <line x1="8" y1="12" x2="2.5" y2="17.5" stroke-linecap="round" />
+        <line
+          x1="8"
+          y1="12"
+          x2="2.5"
+          y2="17.5"
+          stroke-linecap="round"
+        />
       </svg>
+
       <input
         class="search__input"
         type="search"
@@ -21,22 +37,77 @@
     </label>
 
     <label class="check">
-      <input type="checkbox" [checked]="latestOnly()" (change)="onLatestOnlyChange($event)" />
+      <input
+        type="checkbox"
+        [checked]="latestOnly()"
+        (change)="onLatestOnlyChange($event)"
+      />
       Latest versions only
     </label>
 
-    <button class="btn" type="button" (click)="load()" [disabled]="loading()">Refresh</button>
+    <button
+      class="btn"
+      type="button"
+      (click)="load()"
+      [disabled]="loading()"
+    >
+      {{ loading() ? 'Refreshing...' : 'Refresh' }}
+    </button>
+
+    @if (hasFilters()) {
+      <button
+        class="btn"
+        type="button"
+        (click)="clearFilters()"
+        [disabled]="loading()"
+      >
+        Clear Filters
+      </button>
+    }
   </div>
 
+  <!-- Flow count -->
   <p class="count">
-    {{ flows().length }} {{ flows().length === 1 ? 'flow' : 'flows' }}
+    {{ flows().length }}
+    {{ flows().length === 1 ? 'flow' : 'flows' }}
   </p>
 
-  @if (error()) {
-    <p class="message message--error" role="alert">{{ error() }}</p>
+  <!-- Loading and error messages -->
+  @if (loading()) {
+    <p class="message" role="status">Loading flows...</p>
   }
 
-  <!-- Table -->
+  @if (error()) {
+    <p class="message message--error" role="alert">
+      {{ error() }}
+    </p>
+  }
+
+  <!-- Execution result -->
+  @if (executionMessage()) {
+    <div
+      class="message"
+      [class.message--error]="executionError()"
+      role="status"
+    >
+      {{ executionMessage() }}
+
+      @if (executionId()) {
+        <p>
+          Execution ID:
+          <code>{{ executionId() }}</code>
+        </p>
+      }
+
+      @if (executionStatus()) {
+        <p>
+          Status: <strong>{{ executionStatus() }}</strong>
+        </p>
+      }
+    </div>
+  }
+
+  <!-- Flows table -->
   <div class="table-wrap" [class.table-wrap--loading]="loading()">
     <table class="table">
       <thead>
@@ -46,36 +117,58 @@
           <th>Created on</th>
           <th>Created by</th>
           <th class="num">ID</th>
+          <th>Actions</th>
         </tr>
       </thead>
+
       <tbody>
         @for (flow of flows(); track flow.id) {
           <tr>
-            <!-- <td class="name">{{ flow.name }}</td> -->
+            <td>{{ flow.name }}</td>
 
-            <td class="name">
-  <a class="name-link" [routerLink]="['/my-flows', flow.id]">{{ flow.name }}</a>
-</td>
+            <td>{{ flow.version }}</td>
 
+            <td>
+              {{ flow.createdAt | date: 'medium' }}
+            </td>
 
-            <td><span class="badge">v{{ flow.version }}</span></td>
-            <td>{{ flow.createdAt | date: 'yyyy-MM-dd HH:mm' }}</td>
             <td>{{ flow.createdBy }}</td>
+
             <td class="num">{{ flow.id }}</td>
-          </tr>
-        } @empty {
-          <tr>
-            <td class="empty" colspan="5">
-              @if (loading()) {
-                Loading flows...
-              } @else if (hasFilters()) {
-                No flows match your filters.
-                <button class="link" type="button" (click)="clearFilters()">Clear filters</button>
-              } @else {
-                No flows yet.
-              }
+
+            <td>
+              <div class="flow-card__actions">
+                <button
+                  class="btn"
+                  type="button"
+                  (click)="editFlow(flow)"
+                >
+                  Edit Flow
+                </button>
+
+                <button
+                  class="btn"
+                  type="button"
+                  (click)="runFlow(flow)"
+                  [disabled]="runningId() !== null"
+                >
+                  {{
+                    runningId() === flow.id
+                      ? 'Starting...'
+                      : 'Run Flow'
+                  }}
+                </button>
+              </div>
             </td>
           </tr>
+        } @empty {
+          @if (!loading() && !error()) {
+            <tr>
+              <td colspan="6" class="empty-state">
+                No flows found.
+              </td>
+            </tr>
+          }
         }
       </tbody>
     </table>
