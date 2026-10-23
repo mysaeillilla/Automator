@@ -14,7 +14,8 @@ public sealed class WorkflowDefinition
 {
     /// <summary>
     /// Package name -> DLL path (paths are filled in by the API before execution).
-    /// The legacy shape "Namespace.ClassName" -> DLL path is still supported.
+    /// An action's "ClassName" is the package name; the class executed inside
+    /// that package's DLL is always "Program".
     /// </summary>
     public Dictionary<string, string> Packages { get; set; } = new();
     public Dictionary<string, WorkflowVariable> Variables { get; set; } = new();
@@ -35,6 +36,7 @@ public sealed class WorkflowVariable
 
 public sealed class WorkflowAction
 {
+    /// <summary>Package name (key in "packages"). The DLL's entry class is always "Program".</summary>
     public string ClassName { get; set; } = string.Empty;
     public string FunctionName { get; set; } = string.Empty;
 
@@ -51,6 +53,9 @@ public sealed class WorkflowAction
 
 public class WorkflowExecutor
 {
+    /// <summary>Name of the class every package DLL exposes.</summary>
+    private const string PackageEntryClass = "Program";
+
     private static readonly Regex TemplateRegex =
         new(@"\{\{\s*([A-Za-z_]\w*)\s*\}\}", RegexOptions.Compiled);
 
@@ -63,17 +68,17 @@ public class WorkflowExecutor
 
     private readonly Dictionary<string, Assembly> _assemblyCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<Type, object> _instanceCache = new();
-    private readonly Dictionary<string, Type> _typeCache = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Type> _typeCache = new(StringComparer.OrdinalIgnoreCase);
 
-    public Dictionary<string, string> Packages { get; set; } = new();
+    public Dictionary<string, string> Packages { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, WorkflowVariable> Variables { get; set; } = new();
     public Dictionary<string, WorkflowAction> ActionList { get; set; } = new();
     public WorkflowAction? CurrentAction { get; set; }
     public string? CurrentActionId { get; private set; }
 
     /// <summary>
-    /// Optional security guard: when set, DLLs outside this folder will not be loaded.
-    /// Strongly recommended, since the workflow JSON decides which DLL gets executed.
+    /// OPTIONAL security guard. Leave null (default) to load each package from the path
+    /// given in the workflow JSON. If set, DLLs outside this folder are refused.
     /// </summary>
     public string? AllowedPackageRoot { get; set; }
 
@@ -122,6 +127,7 @@ public class WorkflowExecutor
             Notify(l => l.ActionStarted(ActionID, ++_sequence, action));
             started = true;
 
+            // ClassName is the package name -> load its DLL -> find class "Program"
             var type = ResolveType(action.ClassName);
 
             // Resolve {{variables}} in inputs
@@ -168,8 +174,9 @@ public class WorkflowExecutor
             var definition = JsonSerializer.Deserialize<WorkflowDefinition>(Workflow, JsonOptions)
                              ?? throw new InvalidOperationException("Workflow JSON is empty or invalid.");
 
-            // 1. Packages
-            Packages = definition.Packages ?? new();
+            // 1. Packages (case-insensitive lookup by package name)
+            Packages = new Dictionary<string, string>(
+                definition.Packages ?? new(), StringComparer.OrdinalIgnoreCase);
 
             // 2. Variables
             foreach (var (name, variable) in definition.Variables ?? new())
@@ -244,64 +251,54 @@ public class WorkflowExecutor
     // ─────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Finds the .NET type for an action's ClassName.
-    /// 1. Legacy shape: Packages["Namespace.ClassName"] = dll path -> load that DLL directly.
-    /// 2. Current shape: Packages["PackageName"] = dll path -> search every listed DLL for the class.
+    /// The action's ClassName is a PACKAGE NAME. Look it up in Packages to get the DLL path,
+    /// load that DLL, and return its "Program" class.
     /// </summary>
-    private Type ResolveType(string className)
+    private Type ResolveType(string packageName)
     {
-        if (string.IsNullOrWhiteSpace(className))
-            throw new InvalidOperationException("Action has no ClassName.");
+        if (string.IsNullOrWhiteSpace(packageName))
+            throw new InvalidOperationException("Action has no ClassName (package name).");
 
-        if (_typeCache.TryGetValue(className, out var cached))
+        if (_typeCache.TryGetValue(packageName, out var cached))
             return cached;
 
-        // 1. Legacy: the key is the class name itself.
-        if (Packages.TryGetValue(className, out var directPath) && !string.IsNullOrWhiteSpace(directPath))
-        {
-            var type = FindTypeInAssembly(LoadAssembly(directPath), className)
-                       ?? throw new InvalidOperationException($"Class '{className}' not found in '{directPath}'.");
-            _typeCache[className] = type;
-            return type;
-        }
+        if (!Packages.TryGetValue(packageName, out var dllPath))
+            throw new InvalidOperationException(
+                $"Package '{packageName}' is not listed in the workflow's packages.");
 
-        // 2. Search all package DLLs.
-        var searched = new List<string>();
-        foreach (var (packageName, dllPath) in Packages)
-        {
-            if (string.IsNullOrWhiteSpace(dllPath)) continue;   // unresolved / metadata entry
+        if (string.IsNullOrWhiteSpace(dllPath))
+            throw new InvalidOperationException(
+                $"Package '{packageName}' has no DLL path. The path must be provided before execution.");
 
-            var type = FindTypeInAssembly(LoadAssembly(dllPath), className);
-            if (type is not null)
-            {
-                Log($"Class '{className}' resolved from package '{packageName}'.");
-                _typeCache[className] = type;
-                return type;
-            }
+        var assembly = LoadAssembly(dllPath);
 
-            searched.Add($"{packageName} ({dllPath})");
-        }
+        var type = FindProgramType(assembly)
+                   ?? throw new InvalidOperationException(
+                       $"Class '{PackageEntryClass}' not found in package '{packageName}' ({dllPath}).");
 
-        throw new InvalidOperationException(searched.Count == 0
-            ? $"No package registered for class '{className}'. The workflow has no packages with a DLL path."
-            : $"Class '{className}' was not found in any registered package. Searched: {string.Join("; ", searched)}.");
+        Log($"Package '{packageName}' -> {type.FullName} ({dllPath})");
+        _typeCache[packageName] = type;
+        return type;
     }
 
-    private static Type? FindTypeInAssembly(Assembly assembly, string className)
+    /// <summary>Finds the public "Program" class (with or without a namespace).</summary>
+    private static Type? FindProgramType(Assembly assembly)
     {
-        var type = assembly.GetType(className, throwOnError: false, ignoreCase: false);
+        // Global namespace
+        var type = assembly.GetType(PackageEntryClass, throwOnError: false, ignoreCase: false);
         if (type is not null) return type;
+
+        static bool IsProgram(Type? t) =>
+            t is not null && t.IsClass && t.IsPublic && t.Name == PackageEntryClass;
 
         try
         {
-            return assembly.GetExportedTypes().FirstOrDefault(t =>
-                t.FullName == className || t.Name == className);
+            return assembly.GetExportedTypes().FirstOrDefault(IsProgram);
         }
         catch (ReflectionTypeLoadException ex)
         {
             // Some types failed to load (missing dependency); still search the ones that did.
-            return ex.Types.FirstOrDefault(t =>
-                t is not null && t.IsPublic && (t.FullName == className || t.Name == className));
+            return ex.Types.FirstOrDefault(IsProgram);
         }
     }
 
@@ -309,6 +306,7 @@ public class WorkflowExecutor
     {
         var fullPath = Path.GetFullPath(dllPath, AppContext.BaseDirectory);
 
+        // Optional guard – only enforced when AllowedPackageRoot is configured.
         if (!string.IsNullOrWhiteSpace(AllowedPackageRoot))
         {
             var root = Path.GetFullPath(AllowedPackageRoot)
@@ -507,7 +505,7 @@ public class WorkflowExecutor
 
     private void Reset()
     {
-        Packages = new();
+        Packages = new(StringComparer.OrdinalIgnoreCase);
         Variables = new();
         ActionList = new();
         CurrentAction = null;

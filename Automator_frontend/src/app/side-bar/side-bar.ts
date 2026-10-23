@@ -19,7 +19,7 @@ export class SideBar {
   readonly collapsed = signal(false);
 
   readonly mainItems: NavItem[] = [
-    { id: 'create', label: 'Create', route: '/create' },
+    { id: 'create', label: 'Create', route: '/createflow' },
     { id: 'my-flows', label: 'My Flows', route: '/myflows' },
     { id: 'packages', label: 'Packages', route: '/packages' },
     { id: 'history', label: 'History', route: '/history' },

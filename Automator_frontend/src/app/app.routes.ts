@@ -2,6 +2,7 @@ import { Routes } from '@angular/router';
 import { Packages } from './packages/packages';
 import { Activity } from './activity/activity';
 import { MyFlows } from './my-flows/my-flows';
+import { FlowBuilderComponent } from './flow-builder/flow-builder';
 
 export const routes: Routes = [
 
@@ -9,6 +10,7 @@ export const routes: Routes = [
   { path: '', component: Packages },
   { path: 'history', component: Activity },
   { path: 'myflows', component: MyFlows },
+  { path: 'createflow', component: FlowBuilderComponent },
 
 {
   path: 'my-flows/:id',

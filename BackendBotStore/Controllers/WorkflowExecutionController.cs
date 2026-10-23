@@ -21,17 +21,27 @@ public class WorkflowExecutionController : ControllerBase
         _runner = runner;
     }
 
+    /// <summary>
+    /// Lists the registered packages (id and name only; DLL paths are not exposed).
+    /// </summary>
     [HttpGet]
     public async Task<IActionResult> GetPackages()
     {
-        return Ok("");
+        var packages = await _db.Packages.AsNoTracking()
+            .OrderBy(p => p.Name)
+            .ThenByDescending(p => p.Id)
+            .Select(p => new { p.Id, p.Name })
+            .ToListAsync();
+
+        return Ok(packages);
     }
 
     /// <summary>
     /// Starts a saved workflow (looked up by its id in the Workflows table)
     /// and returns immediately with an execution id.
-    /// Package DLL paths left blank in the workflow JSON are resolved from the Packages table
-    /// (matched by package name) before the workflow is handed to the runner.
+    /// Every key under "packages" in the workflow JSON is a package name; its value is replaced
+    /// with the DLL path from the Packages table (matched by name) before the workflow is handed
+    /// to the runner. Each action's "ClassName" refers to one of these package names.
     /// </summary>
     [HttpPost("execute/{workflowId:int}")]
     public async Task<IActionResult> Execute(int workflowId)
@@ -168,8 +178,9 @@ public class WorkflowExecutionController : ControllerBase
     // ── helpers ──────────────────────────────────────────────
 
     /// <summary>
-    /// Looks at the "packages" object of the workflow JSON. Every key is treated as a Package name;
-    /// it is matched against Packages.Name and its value is replaced with the package's FilePath (DLL path).
+    /// Looks at the "packages" object of the workflow JSON. Every key is treated as a package name;
+    /// it is matched against Packages.Name and its value is replaced with the package's DLL path
+    /// (normalized to an absolute path, the same way the executor resolves it).
     /// If several versions of a package exist, the most recently registered one (highest Id) is used.
     /// Returns the rewritten JSON plus the names that could not be resolved.
     /// </summary>
@@ -194,16 +205,11 @@ public class WorkflowExecutionController : ControllerBase
         if (packagesKey is null || root[packagesKey] is not JsonObject packages)
             return (workflowJson, missing);   // no packages section, nothing to resolve
 
-        // Collect package names, skipping legacy metadata keys.
-        var packageNames = new List<string>();
-        foreach (var prop in packages)
-        {
-            var key = prop.Key;
-            if (string.IsNullOrWhiteSpace(key)) continue;
-            if (string.Equals(key, "name", StringComparison.OrdinalIgnoreCase)) continue;
-            if (string.Equals(key, "ClassName", StringComparison.OrdinalIgnoreCase)) continue;
-            packageNames.Add(key);
-        }
+        // Every key is a package name.
+        var packageNames = packages
+            .Select(p => p.Key)
+            .Where(k => !string.IsNullOrWhiteSpace(k))
+            .ToList();
 
         if (packageNames.Count == 0)
             return (workflowJson, missing);
@@ -219,15 +225,22 @@ public class WorkflowExecutionController : ControllerBase
 
         foreach (var name in packageNames)
         {
-            if (!latestByName.TryGetValue(name, out var path) ||
-                string.IsNullOrWhiteSpace(path) ||
-                !System.IO.File.Exists(path))
+            if (!latestByName.TryGetValue(name, out var path) || string.IsNullOrWhiteSpace(path))
             {
                 missing.Add(name);
                 continue;
             }
 
-            packages[name] = path;
+            // Same base the executor uses for relative paths, so the check and the load agree.
+            var fullPath = Path.GetFullPath(path, AppContext.BaseDirectory);
+
+            if (!System.IO.File.Exists(fullPath))
+            {
+                missing.Add(name);
+                continue;
+            }
+
+            packages[name] = fullPath;
         }
 
         return (root.ToJsonString(), missing);
