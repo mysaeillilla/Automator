@@ -1,0 +1,184 @@
+<section class="flow">
+  <div class="flow__nav">
+    <a class="btn" routerLink="/myflows">&larr; Back to My Flows</a>
+    <button class="btn" type="button" (click)="load()" [disabled]="loading()">Refresh</button>
+  </div>
+
+  @if (error()) {
+    <p class="message message--error" role="alert">{{ error() }}</p>
+  }
+
+  @if (detail(); as flow) {
+    <div class="flow__body" [class.flow__body--loading]="loading()">
+      <!-- Header -->
+      <div class="flow__header">
+        <h1 class="flow__title">{{ flow.name }}</h1>
+        <span class="badge">v{{ flow.version }}</span>
+      </div>
+      <div class="meta">
+        <span>ID {{ flow.id }}</span>
+        <span>Created {{ flow.createdAt | date: 'yyyy-MM-dd HH:mm' }}</span>
+        <span>by {{ flow.createdBy }}</span>
+      </div>
+
+      <div class="expand">
+        <button class="btn btn--small" type="button" (click)="expandAll()">Expand all</button>
+        <button class="btn btn--small" type="button" (click)="collapseAll()">Collapse all</button>
+      </div>
+
+      <!-- Packages -->
+      <div class="section">
+        <button class="section__head" type="button"
+                [attr.aria-expanded]="isSectionOpen('packages')" (click)="toggleSection('packages')">
+          <svg class="chevron" [class.chevron--open]="isSectionOpen('packages')" width="16" height="16"
+               viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 4 6 6-6 6" /></svg>
+          Packages
+          <span class="count">{{ packages().length }}</span>
+        </button>
+        @if (isSectionOpen('packages')) {
+          <ul class="list">
+            @for (pkg of packages(); track pkg.name) {
+              <li class="kv">
+                <span class="kv__key">{{ pkg.name }}</span>
+                <code class="kv__value">{{ pkg.path }}</code>
+              </li>
+            } @empty {
+              <li class="muted">No packages.</li>
+            }
+          </ul>
+        }
+      </div>
+
+      <!-- Variables -->
+      <div class="section">
+        <button class="section__head" type="button"
+                [attr.aria-expanded]="isSectionOpen('variables')" (click)="toggleSection('variables')">
+          <svg class="chevron" [class.chevron--open]="isSectionOpen('variables')" width="16" height="16"
+               viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 4 6 6-6 6" /></svg>
+          Variables
+          <span class="count">{{ variables().length }}</span>
+        </button>
+        @if (isSectionOpen('variables')) {
+          <ul class="list">
+            @for (v of variables(); track v.key) {
+              <li class="item">
+                <button class="item__head" type="button"
+                        [attr.aria-expanded]="isItemOpen(v.key)" (click)="toggleItem(v.key)">
+                  <svg class="chevron" [class.chevron--open]="isItemOpen(v.key)" width="14" height="14"
+                       viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"
+                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 4 6 6-6 6" /></svg>
+                  <span class="item__name">{{ v.name }}</span>
+                  <span class="chip chip--type">{{ v.typeLabel }}</span>
+                  @if (v.input) {
+                    <span class="chip chip--input">Input</span>
+                  }
+                  @if (v.output) {
+                    <span class="chip chip--output">Output</span>
+                  }
+                  <span class="item__preview">{{ v.preview }}</span>
+                </button>
+
+                @if (isItemOpen(v.key)) {
+                  <div class="item__body">
+                    <h3 class="sub__title">Value</h3>
+                    @if (v.valueBlock) {
+                      <app-json-viewer [block]="v.valueBlock" />
+                    } @else {
+                      <code class="plain">{{ v.plainValue }}</code>
+                    }
+                    @if (v.schema) {
+                      <h3 class="sub__title">Type</h3>
+                      <app-json-viewer [block]="v.schema" />
+                    }
+                  </div>
+                }
+              </li>
+            } @empty {
+              <li class="muted">No variables.</li>
+            }
+          </ul>
+        }
+      </div>
+
+      <!-- Actions -->
+      <div class="section">
+        <button class="section__head" type="button"
+                [attr.aria-expanded]="isSectionOpen('actions')" (click)="toggleSection('actions')">
+          <svg class="chevron" [class.chevron--open]="isSectionOpen('actions')" width="16" height="16"
+               viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 4 6 6-6 6" /></svg>
+          Actions
+          <span class="count">{{ actions().length }}</span>
+        </button>
+        @if (isSectionOpen('actions')) {
+          <ul class="list">
+            @for (a of actions(); track a.key) {
+              <li class="item">
+                <button class="item__head" type="button"
+                        [attr.aria-expanded]="isItemOpen(a.key)" (click)="toggleItem(a.key)">
+                  <svg class="chevron" [class.chevron--open]="isItemOpen(a.key)" width="14" height="14"
+                       viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"
+                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 4 6 6-6 6" /></svg>
+                  <span class="item__seq">{{ a.id }}</span>
+                  <span class="item__name">{{ a.functionName }}</span>
+                  <span class="item__preview">{{ a.className }}</span>
+                </button>
+
+                @if (isItemOpen(a.key)) {
+                  <div class="item__body">
+                    <div class="io">
+                      <div>
+                        <h3 class="sub__title">Inputs</h3>
+                        @for (p of a.inputs; track p.name) {
+                          <div class="param">
+                            <span class="param__name">{{ p.name }}</span>
+                            <span class="param__value" [class.param__value--ref]="p.isReference">{{ p.text }}</span>
+                          </div>
+                        } @empty {
+                          <span class="muted">None</span>
+                        }
+                      </div>
+                      <div>
+                        <h3 class="sub__title">Outputs</h3>
+                        @for (p of a.outputs; track p.name) {
+                          <div class="param">
+                            <span class="param__name">{{ p.name }}</span>
+                            <span class="param__value" [class.param__value--ref]="p.isReference">{{ p.text }}</span>
+                          </div>
+                        } @empty {
+                          <span class="muted">None</span>
+                        }
+                      </div>
+                    </div>
+                  </div>
+                }
+              </li>
+            } @empty {
+              <li class="muted">No actions.</li>
+            }
+          </ul>
+        }
+      </div>
+
+      <!-- Raw JSON -->
+      <div class="section">
+        <button class="section__head" type="button"
+                [attr.aria-expanded]="isSectionOpen('raw')" (click)="toggleSection('raw')">
+          <svg class="chevron" [class.chevron--open]="isSectionOpen('raw')" width="16" height="16"
+               viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 4 6 6-6 6" /></svg>
+          Workflow JSON
+        </button>
+        @if (isSectionOpen('raw')) {
+          <div class="section__body">
+            <app-json-viewer [block]="rawWorkflow()" />
+          </div>
+        }
+      </div>
+    </div>
+  } @else if (loading()) {
+    <p class="state">Loading flow...</p>
+  }
+</section>

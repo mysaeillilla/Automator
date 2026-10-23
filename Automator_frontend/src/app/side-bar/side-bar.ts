@@ -20,7 +20,7 @@ export class SideBar {
 
   readonly mainItems: NavItem[] = [
     { id: 'create', label: 'Create', route: '/create' },
-    { id: 'my-flows', label: 'My Flows', route: '/my-flows' },
+    { id: 'my-flows', label: 'My Flows', route: '/myflows' },
     { id: 'packages', label: 'Packages', route: '/packages' },
     { id: 'history', label: 'History', route: '/history' },
   ];

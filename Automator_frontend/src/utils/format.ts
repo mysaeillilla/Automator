@@ -48,6 +48,25 @@ export function prettyJson(raw: string | null | undefined): string {
   }
 }
 
+
+// function makeBlock(text: string): JsonBlock | null {
+//   if (!text) return null;
+//   const truncated = text.length > MAX_PREVIEW_CHARS;
+//   return { text, preview: truncated ? text.slice(0, MAX_PREVIEW_CHARS) : text, truncated };
+// }
+
+// export function toJsonBlock1(raw: string | null | undefined): JsonBlock | null {
+//   return makeBlock(prettyJson(raw));
+// }
+
+// For values that are already objects or arrays (no string parsing needed)
+export function valueToJsonBlock(value: unknown): JsonBlock | null {
+  if (value === undefined) return null;
+  return toJsonBlock(JSON.stringify(value, null, 2));
+}
+
+
+
 export function toJsonBlock(raw: string | null | undefined): JsonBlock | null {
   const text = prettyJson(raw);
   if (!text) return null;

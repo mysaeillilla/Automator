@@ -1,0 +1,83 @@
+<section class="flows">
+  <div class="flows__header">
+    <h1 class="flows__title">My Flows</h1>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <label class="search">
+      <svg class="search__icon" width="16" height="16" viewBox="0 0 20 20" fill="none"
+           stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <circle cx="12" cy="8" r="5.5" />
+        <line x1="8" y1="12" x2="2.5" y2="17.5" stroke-linecap="round" />
+      </svg>
+      <input
+        class="search__input"
+        type="search"
+        placeholder="Search flows by name"
+        [value]="searchText()"
+        (input)="onSearch($event)"
+      />
+    </label>
+
+    <label class="check">
+      <input type="checkbox" [checked]="latestOnly()" (change)="onLatestOnlyChange($event)" />
+      Latest versions only
+    </label>
+
+    <button class="btn" type="button" (click)="load()" [disabled]="loading()">Refresh</button>
+  </div>
+
+  <p class="count">
+    {{ flows().length }} {{ flows().length === 1 ? 'flow' : 'flows' }}
+  </p>
+
+  @if (error()) {
+    <p class="message message--error" role="alert">{{ error() }}</p>
+  }
+
+  <!-- Table -->
+  <div class="table-wrap" [class.table-wrap--loading]="loading()">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Version</th>
+          <th>Created on</th>
+          <th>Created by</th>
+          <th class="num">ID</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (flow of flows(); track flow.id) {
+          <tr>
+            <!-- <td class="name">{{ flow.name }}</td> -->
+
+            <td class="name">
+  <a class="name-link" [routerLink]="['/my-flows', flow.id]">{{ flow.name }}</a>
+</td>
+
+
+            <td><span class="badge">v{{ flow.version }}</span></td>
+            <td>{{ flow.createdAt | date: 'yyyy-MM-dd HH:mm' }}</td>
+            <td>{{ flow.createdBy }}</td>
+            <td class="num">{{ flow.id }}</td>
+          </tr>
+        } @empty {
+          <tr>
+            <td class="empty" colspan="5">
+              @if (loading()) {
+                Loading flows...
+              } @else if (hasFilters()) {
+                No flows match your filters.
+                <button class="link" type="button" (click)="clearFilters()">Clear filters</button>
+              } @else {
+                No flows yet.
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+</section>

@@ -1,0 +1,15 @@
+@if (block(); as b) {
+  <div class="json">
+    <button class="json__copy" type="button" (click)="copy()">
+      {{ copied() ? 'Copied' : 'Copy' }}
+    </button>
+    <pre class="json__pre">{{ b.preview }}</pre>
+    @if (b.truncated) {
+      <p class="json__note">
+        Preview truncated ({{ b.text.length }} characters in total). Use Copy to get the full value.
+      </p>
+    }
+  </div>
+} @else {
+  <span class="muted">None</span>
+}
