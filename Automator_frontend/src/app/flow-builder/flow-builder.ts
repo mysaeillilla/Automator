@@ -180,7 +180,22 @@ export class FlowBuilderComponent implements OnInit {
   submitting = signal(false);
   submitMessage = signal('');
   submitSuccess = signal(false);
+libraryOpen = signal(true);
+panelOpen   = signal(true);
+zoom        = signal(1);
 
+zoomIn()  { this.zoom.update(z => Math.min(2, +(z + 0.1).toFixed(2))); }
+zoomOut() { this.zoom.update(z => Math.max(0.4, +(z - 0.1).toFixed(2))); }
+fit()     { this.zoom.set(1); }
+back()    { history.back(); }   // or router.navigate(...)
+
+private readonly ACCENTS = ['#0f62d6', '#107c41', '#7a3fb0', '#c4562b', '#0b7a8c'];
+accentOf(pkgId: string | number): string {
+  const s = String(pkgId);
+  let h = 0;
+  for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return this.ACCENTS[h % this.ACCENTS.length];
+}
   submitWorkflow(): void {
     if (this.submitting()) {
       return;
