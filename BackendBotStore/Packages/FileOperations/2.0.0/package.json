@@ -10,11 +10,20 @@
         "content": "string"
       },
       "Outputs": {
-        "Response": "string"
+        "Response": "boolean"
       }
     },
     {
       "ActionName": "FileExists",
+      "Inputs": {
+        "filePath": "string"
+      },
+      "Outputs": {
+        "Response": "boolean"
+      }
+    },
+    {
+      "ActionName": "DeleteFile",
       "Inputs": {
         "filePath": "string"
       },
@@ -30,27 +39,26 @@
         "overwrite": "boolean"
       },
       "Outputs": {
-        "Response": "string"
+        "Response": "boolean"
       }
     },
     {
       "ActionName": "MoveFile",
       "Inputs": {
         "sourcePath": "string",
-        "destinationPath": "string",
-        "overwrite": "boolean"
+        "destinationPath": "string"
       },
       "Outputs": {
-        "Response": "string"
+        "Response": "boolean"
       }
     },
     {
-      "ActionName": "DeleteFile",
+      "ActionName": "CreateFolder",
       "Inputs": {
-        "filePath": "string"
+        "folderPath": "string"
       },
       "Outputs": {
-        "Response": "string"
+        "Response": "boolean"
       }
     }
   ]

@@ -135,7 +135,7 @@ export class MyFlows implements OnDestroy {
     this.executionStatus.set(null);
 
     const url =
-      `https://localhost:5002/api/WorkflowExecution/execute/${flow.id}`;
+      `http://localhost:5000/api/WorkflowExecution/execute/${flow.id}`;
 
     this.http.post<WorkflowExecutionResponse>(url, '').subscribe({
       next: (response) => {

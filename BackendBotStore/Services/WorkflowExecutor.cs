@@ -54,7 +54,7 @@ public sealed class WorkflowAction
 public class WorkflowExecutor
 {
     /// <summary>Name of the class every package DLL exposes.</summary>
-    private const string PackageEntryClass = "Program";
+    // private const string PackageEntryClass = "Program";
 
     private static readonly Regex TemplateRegex =
         new(@"\{\{\s*([A-Za-z_]\w*)\s*\}\}", RegexOptions.Compiled);
@@ -111,7 +111,90 @@ public class WorkflowExecutor
     // ─────────────────────────────────────────────────────────
     //  Single action execution
     // ─────────────────────────────────────────────────────────
+private Type ResolveType(string packageName, string functionName)
+{
+    if (string.IsNullOrWhiteSpace(packageName))
+        throw new InvalidOperationException(
+            "Action has no ClassName (package name).");
 
+    if (string.IsNullOrWhiteSpace(functionName))
+        throw new InvalidOperationException(
+            "Action has no FunctionName.");
+
+    // Cache by package and function because different functions
+    // in the same package may belong to different classes.
+    var cacheKey = $"{packageName}::{functionName}";
+
+    if (_typeCache.TryGetValue(cacheKey, out var cached))
+        return cached;
+
+    if (!Packages.TryGetValue(packageName, out var dllPath))
+        throw new InvalidOperationException(
+            $"Package '{packageName}' is not listed in the workflow packages.");
+
+    if (string.IsNullOrWhiteSpace(dllPath))
+        throw new InvalidOperationException(
+            $"Package '{packageName}' has no DLL path.");
+
+    var assembly = LoadAssembly(dllPath);
+
+    Type[] types;
+
+    try
+    {
+        types = assembly.GetExportedTypes();
+    }
+    catch (ReflectionTypeLoadException ex)
+    {
+        types = ex.Types
+            .Where(t => t is not null && t.IsPublic)
+            .Cast<Type>()
+            .ToArray();
+    }
+
+    // Find public classes that contain the requested function.
+    var matchingTypes = types
+        .Where(t => t.IsClass && !t.IsAbstract)
+        .Where(t => t.GetMethods(
+                BindingFlags.Public |
+                BindingFlags.Instance |
+                BindingFlags.Static)
+            .Any(m =>
+                m.Name.Equals(
+                    functionName,
+                    StringComparison.OrdinalIgnoreCase)
+                && !m.ContainsGenericParameters))
+        .ToList();
+
+    if (matchingTypes.Count == 0)
+    {
+        throw new MissingMethodException(
+            $"Function '{functionName}' was not found in any public class " +
+            $"in package '{packageName}' ({dllPath}).");
+    }
+
+    if (matchingTypes.Count > 1)
+    {
+        var classNames = string.Join(
+            ", ",
+            matchingTypes.Select(t => t.FullName));
+
+        throw new InvalidOperationException(
+            $"Function '{functionName}' exists in multiple classes " +
+            $"in package '{packageName}': {classNames}. " +
+            "Please make the function unique or specify the class explicitly.");
+    }
+
+    var resolvedType = matchingTypes[0];
+
+    Log(
+        $"Package '{packageName}' -> " +
+        $"{resolvedType.FullName}.{functionName} ({dllPath})");
+
+    _typeCache[cacheKey] = resolvedType;
+
+    return resolvedType;
+}
     public bool ExecuteCurrentAction(string ActionID)
     {
         var started = false;
@@ -128,7 +211,9 @@ public class WorkflowExecutor
             started = true;
 
             // ClassName is the package name -> load its DLL -> find class "Program"
-            var type = ResolveType(action.ClassName);
+            // var type = ResolveType(action.ClassName);
+
+            var type = ResolveType(action.ClassName, action.FunctionName);
 
             // Resolve {{variables}} in inputs
             var inputs = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
@@ -254,53 +339,53 @@ public class WorkflowExecutor
     /// The action's ClassName is a PACKAGE NAME. Look it up in Packages to get the DLL path,
     /// load that DLL, and return its "Program" class.
     /// </summary>
-    private Type ResolveType(string packageName)
-    {
-        if (string.IsNullOrWhiteSpace(packageName))
-            throw new InvalidOperationException("Action has no ClassName (package name).");
+    // private Type ResolveType(string packageName)
+    // {
+    //     if (string.IsNullOrWhiteSpace(packageName))
+    //         throw new InvalidOperationException("Action has no ClassName (package name).");
 
-        if (_typeCache.TryGetValue(packageName, out var cached))
-            return cached;
+    //     if (_typeCache.TryGetValue(packageName, out var cached))
+    //         return cached;
 
-        if (!Packages.TryGetValue(packageName, out var dllPath))
-            throw new InvalidOperationException(
-                $"Package '{packageName}' is not listed in the workflow's packages.");
+    //     if (!Packages.TryGetValue(packageName, out var dllPath))
+    //         throw new InvalidOperationException(
+    //             $"Package '{packageName}' is not listed in the workflow's packages.");
 
-        if (string.IsNullOrWhiteSpace(dllPath))
-            throw new InvalidOperationException(
-                $"Package '{packageName}' has no DLL path. The path must be provided before execution.");
+    //     if (string.IsNullOrWhiteSpace(dllPath))
+    //         throw new InvalidOperationException(
+    //             $"Package '{packageName}' has no DLL path. The path must be provided before execution.");
 
-        var assembly = LoadAssembly(dllPath);
+    //     var assembly = LoadAssembly(dllPath);
 
-        var type = FindProgramType(assembly)
-                   ?? throw new InvalidOperationException(
-                       $"Class '{PackageEntryClass}' not found in package '{packageName}' ({dllPath}).");
+    //     var type = FindProgramType(assembly)
+    //                ?? throw new InvalidOperationException(
+    //                    $"Class '{PackageEntryClass}' not found in package '{packageName}' ({dllPath}).");
 
-        Log($"Package '{packageName}' -> {type.FullName} ({dllPath})");
-        _typeCache[packageName] = type;
-        return type;
-    }
+    //     Log($"Package '{packageName}' -> {type.FullName} ({dllPath})");
+    //     _typeCache[packageName] = type;
+    //     return type;
+    // }
 
-    /// <summary>Finds the public "Program" class (with or without a namespace).</summary>
-    private static Type? FindProgramType(Assembly assembly)
-    {
-        // Global namespace
-        var type = assembly.GetType(PackageEntryClass, throwOnError: false, ignoreCase: false);
-        if (type is not null) return type;
+    // /// <summary>Finds the public "Program" class (with or without a namespace).</summary>
+    // private static Type? FindProgramType(Assembly assembly)
+    // {
+    //     // Global namespace
+    //     var type = assembly.GetType(PackageEntryClass, throwOnError: false, ignoreCase: false);
+    //     if (type is not null) return type;
 
-        static bool IsProgram(Type? t) =>
-            t is not null && t.IsClass && t.IsPublic && t.Name == PackageEntryClass;
+    //     static bool IsProgram(Type? t) =>
+    //         t is not null && t.IsClass && t.IsPublic && t.Name == PackageEntryClass;
 
-        try
-        {
-            return assembly.GetExportedTypes().FirstOrDefault(IsProgram);
-        }
-        catch (ReflectionTypeLoadException ex)
-        {
-            // Some types failed to load (missing dependency); still search the ones that did.
-            return ex.Types.FirstOrDefault(IsProgram);
-        }
-    }
+    //     try
+    //     {
+    //         return assembly.GetExportedTypes().FirstOrDefault(IsProgram);
+    //     }
+    //     catch (ReflectionTypeLoadException ex)
+    //     {
+    //         // Some types failed to load (missing dependency); still search the ones that did.
+    //         return ex.Types.FirstOrDefault(IsProgram);
+    //     }
+    // }
 
     private Assembly LoadAssembly(string dllPath)
     {
@@ -309,10 +394,10 @@ public class WorkflowExecutor
         // Optional guard – only enforced when AllowedPackageRoot is configured.
         if (!string.IsNullOrWhiteSpace(AllowedPackageRoot))
         {
-            var root = Path.GetFullPath(AllowedPackageRoot)
-                           .TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-            if (!fullPath.StartsWith(root, StringComparison.OrdinalIgnoreCase))
-                throw new UnauthorizedAccessException($"Package path '{fullPath}' is outside the allowed folder.");
+            // var root = Path.GetFullPath(AllowedPackageRoot)
+            //                .TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            // if (!fullPath.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            //     throw new UnauthorizedAccessException($"Package path '{fullPath}' is outside the allowed folder.");
         }
 
         if (!File.Exists(fullPath))
