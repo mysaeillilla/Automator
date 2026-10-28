@@ -4,10 +4,10 @@ import { HttpClient } from '@angular/common/http';
 
 // Tip: use a dev proxy (proxy.conf.json: "/api" -> https://localhost:5000, secure:false)
 // and set this to '/api/Packages' to avoid CORS / self-signed cert issues.
-const API_URL = 'https://localhost:5000/api/Packages';
+const API_URL = 'http://localhost:5000/api/Packages';
 
 const WORKFLOW_UPLOAD_URL =
-  'https://localhost:5000/api/Workflows/upload';
+  'http://localhost:5000/api/Workflows/upload';
 // ───────────────────────────── Models ─────────────────────────────
 export interface PackageAction {
   id: number;

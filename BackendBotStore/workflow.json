@@ -1,45 +1,33 @@
+
 {
-  "flow_name": "Excel Reader",
+  "flow_name": "Create cxc Table",
   "version": "1.0.0",
   "packages": {
-    "ExcelOperations": ""
+    "DataTable": ""
   },
   "variables": {
-    "file_Path": {
-      "value": "C:\\Users\\Admin\\Downloads\\Leave_Request_Automation.xlsx",
+    "headersJson": {
+      "value": "[\"id\", \"Employee Name\", \"Age\"]",
       "type": "STRING",
       "input": true,
       "output": false
     },
-    "sheet_name": {
-      "value": "Business Process",
+    "employee_data": {
+      "value": "",
       "type": "STRING",
-      "input": true,
-      "output": false
-    },
-    "df_Employee_data": {
-      "value": [],
-      "type": {
-        "id": "NUMBER",
-        "Employee Name": "STRING",
-        "Age": "NUMBER"
-      },
       "input": false,
       "output": true
     }
   },
   "Actions": {
     "1": {
-      "ClassName": "ExcelTools.ExcelReader",
-      "FunctionName": "ReadExcel",
+      "ClassName": "DataTable",
+      "FunctionName": "CreateTable",
       "Inputs": {
-        "filePath": "{{file_Path}}",
-        "sheetName": "{{sheet_name}}",
-        "headerStartRow": 1,
-        "skipEmptyRows": true
+        "headersJson": "{{headersJson}}"
       },
       "outputs": {
-        "Response": "{{df_Employee_data}}"
+        "Table": "{{employee_data}}"
       }
     }
   }

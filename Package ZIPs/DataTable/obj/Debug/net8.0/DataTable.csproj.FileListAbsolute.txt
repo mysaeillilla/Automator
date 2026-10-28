@@ -1,0 +1,13 @@
+D:\projects\Automator\Package ZIPs\DataTable\bin\Debug\net8.0\DataTable.deps.json
+D:\projects\Automator\Package ZIPs\DataTable\bin\Debug\net8.0\DataTable.dll
+D:\projects\Automator\Package ZIPs\DataTable\bin\Debug\net8.0\DataTable.pdb
+D:\projects\Automator\Package ZIPs\DataTable\obj\Debug\net8.0\DataTable.csproj.AssemblyReference.cache
+D:\projects\Automator\Package ZIPs\DataTable\obj\Debug\net8.0\DataTable.GeneratedMSBuildEditorConfig.editorconfig
+D:\projects\Automator\Package ZIPs\DataTable\obj\Debug\net8.0\DataTable.AssemblyInfoInputs.cache
+D:\projects\Automator\Package ZIPs\DataTable\obj\Debug\net8.0\DataTable.AssemblyInfo.cs
+D:\projects\Automator\Package ZIPs\DataTable\obj\Debug\net8.0\DataTable.csproj.CoreCompileInputs.cache
+D:\projects\Automator\Package ZIPs\DataTable\obj\Debug\net8.0\DataTable.sourcelink.json
+D:\projects\Automator\Package ZIPs\DataTable\obj\Debug\net8.0\DataTable.dll
+D:\projects\Automator\Package ZIPs\DataTable\obj\Debug\net8.0\refint\DataTable.dll
+D:\projects\Automator\Package ZIPs\DataTable\obj\Debug\net8.0\DataTable.pdb
+D:\projects\Automator\Package ZIPs\DataTable\obj\Debug\net8.0\ref\DataTable.dll
