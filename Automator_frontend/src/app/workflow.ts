@@ -20,7 +20,7 @@ export interface WorkflowDetailResponse extends WorkflowResponse {
 export class Workflow {
 
   private readonly http = inject(HttpClient);
-  private readonly baseUrl = `${environment.apiUrl}api/Workflows`;
+  private readonly baseUrl = `${environment.apiUrl}/api/Workflows`;
 
   getAll(name: string, latestOnly: boolean): Observable<WorkflowResponse[]> {
     let params = new HttpParams().set('latestOnly', latestOnly);

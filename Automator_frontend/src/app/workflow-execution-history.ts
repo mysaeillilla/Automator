@@ -8,7 +8,7 @@ import { PagedResponse, WorkflowExecutionDetail, WorkflowExecutionQuery, Workflo
 @Injectable({ providedIn: 'root' })
 export class WorkflowExecutionHistoryService {
   private readonly http = inject(HttpClient);
-  private readonly baseUrl = `${environment.apiUrl}api/WorkflowExecutionHistory`;
+  private readonly baseUrl = `${environment.apiUrl}/api/WorkflowExecutionHistory`;
 
   getHistory(query: WorkflowExecutionQuery): Observable<PagedResponse<WorkflowExecutionSummary>> {
     let params = new HttpParams().set('page', query.page).set('pageSize', query.pageSize);

@@ -9,9 +9,11 @@ export class PackageService {
   private readonly http = inject(HttpClient);
 
   // apiUrl already ends with '/', so no extra slash here
-  private readonly baseUrl = `${environment.apiUrl}api/Packages`;
+  private readonly baseUrl = `${environment.apiUrl}/api/Packages`;
 
   getAll(): Observable<PackageResponse[]> {
+
+    console.log(this.baseUrl);
     return this.http.get<PackageResponse[]>(this.baseUrl);
   }
 

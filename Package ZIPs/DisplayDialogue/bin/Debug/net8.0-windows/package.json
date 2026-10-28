@@ -1,0 +1,43 @@
+{
+  "PackageName": "NotificationWindow.dll",
+  "Version": "1.0.0",
+  "Dependencies": "Newtonsoft.Json.dll",
+  "Actions": [
+    {
+      "ActionName": "ShowString",
+      "Inputs": {
+        "message": "string",
+        "title": "string",
+        "autoCloseSeconds": "int"
+      },
+      "Outputs": {}
+    },
+    {
+      "ActionName": "ShowJson",
+      "Inputs": {
+        "json": "string",
+        "title": "string",
+        "autoCloseSeconds": "int"
+      },
+      "Outputs": {}
+    },
+    {
+      "ActionName": "ShowDataTable",
+      "Inputs": {
+        "tableJson": "string",
+        "title": "string",
+        "autoCloseSeconds": "int"
+      },
+      "Outputs": {}
+    },
+    {
+      "ActionName": "ShowRow",
+      "Inputs": {
+        "rowJson": "string",
+        "title": "string",
+        "autoCloseSeconds": "int"
+      },
+      "Outputs": {}
+    }
+  ]
+}

@@ -17,6 +17,19 @@ builder.Services.AddCors(options =>
               .AllowAnyMethod());
 });
 builder.Services.AddControllers();
+
+// Configure CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AngularFrontend", policy =>
+    {
+        policy
+            .WithOrigins("http://localhost:4200")
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
+
 builder.Services.AddTransient<WorkflowExecutor>();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
@@ -39,6 +52,9 @@ builder.Services.AddSingleton(dataSource);
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(dataSource));
 var app = builder.Build();
+
+app.UseRouting();
+app.UseCors("AngularFrontend");
 
 
  app.UseSwagger();

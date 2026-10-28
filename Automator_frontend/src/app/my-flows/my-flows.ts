@@ -14,6 +14,7 @@ import { debounceTime, distinctUntilChanged, map, Subscription } from 'rxjs';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 
 import { Workflow } from '../workflow';
+import { environment } from '../../environments/environment.development';
 
 export interface WorkflowResponse {
   id: number;
@@ -133,9 +134,9 @@ export class MyFlows implements OnDestroy {
     this.executionError.set(false);
     this.executionId.set(null);
     this.executionStatus.set(null);
-
+     const baseUrl = `${environment.apiUrl}`;
     const url =
-      `http://localhost:5000/api/WorkflowExecution/execute/${flow.id}`;
+      `${baseUrl}/api/WorkflowExecution/execute/${flow.id}`;
 
     this.http.post<WorkflowExecutionResponse>(url, '').subscribe({
       next: (response) => {

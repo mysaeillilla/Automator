@@ -1,13 +1,17 @@
 import { Component, ElementRef, HostListener, OnInit, computed, inject, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
+import { environment } from '../../environments/environment.development';
 
 // Tip: use a dev proxy (proxy.conf.json: "/api" -> https://localhost:5000, secure:false)
 // and set this to '/api/Packages' to avoid CORS / self-signed cert issues.
-const API_URL = 'http://localhost:5000/api/Packages';
+
+
+const baseUrl = `${environment.apiUrl}`;
+const API_URL = `${baseUrl}/api/Packages`;
 
 const WORKFLOW_UPLOAD_URL =
-  'http://localhost:5000/api/Workflows/upload';
+ `${baseUrl}/api/Workflows/upload`;
 // ───────────────────────────── Models ─────────────────────────────
 export interface PackageAction {
   id: number;

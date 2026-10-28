@@ -1,0 +1,12 @@
+D:\projects\Automator\Package ZIPs\DisplayDialogue\bin\Debug\net8.0-windows\DisplayDialogue.deps.json
+D:\projects\Automator\Package ZIPs\DisplayDialogue\bin\Debug\net8.0-windows\DisplayDialogue.dll
+D:\projects\Automator\Package ZIPs\DisplayDialogue\bin\Debug\net8.0-windows\DisplayDialogue.pdb
+D:\projects\Automator\Package ZIPs\DisplayDialogue\obj\Debug\net8.0-windows\DisplayDialogue.GeneratedMSBuildEditorConfig.editorconfig
+D:\projects\Automator\Package ZIPs\DisplayDialogue\obj\Debug\net8.0-windows\DisplayDialogue.AssemblyInfoInputs.cache
+D:\projects\Automator\Package ZIPs\DisplayDialogue\obj\Debug\net8.0-windows\DisplayDialogue.AssemblyInfo.cs
+D:\projects\Automator\Package ZIPs\DisplayDialogue\obj\Debug\net8.0-windows\DisplayDialogue.csproj.CoreCompileInputs.cache
+D:\projects\Automator\Package ZIPs\DisplayDialogue\obj\Debug\net8.0-windows\DisplayDialogue.sourcelink.json
+D:\projects\Automator\Package ZIPs\DisplayDialogue\obj\Debug\net8.0-windows\DisplayDialogue.dll
+D:\projects\Automator\Package ZIPs\DisplayDialogue\obj\Debug\net8.0-windows\refint\DisplayDialogue.dll
+D:\projects\Automator\Package ZIPs\DisplayDialogue\obj\Debug\net8.0-windows\DisplayDialogue.pdb
+D:\projects\Automator\Package ZIPs\DisplayDialogue\obj\Debug\net8.0-windows\ref\DisplayDialogue.dll
