@@ -1,15 +1,35 @@
-
 {
-  "flow_name": "Create cxc Table",
+  "flow_name": "ew",
   "version": "1.0.0",
   "packages": {
-    "DataTable": ""
+    "DataTable": "D:\\projects\\Automator\\BackendBotStore\\Packages\\DataTable\\2.0.0\\DataTable.dll",
+    "NotificationWindow": "D:\\projects\\Automator\\BackendBotStore\\Packages\\NotificationWindow\\1.0.0\\NotificationWindow.dll"
   },
   "variables": {
     "headersJson": {
-      "value": "[\"id\", \"Employee Name\", \"Age\"]",
+      "value": [
+        "id",
+        "Employee Name",
+        "Age"
+      ],
       "type": "STRING",
       "input": true,
+      "output": false
+    },
+    "data": {
+      "value": {
+        "Headers": [
+          "id",
+          "Employee Name",
+          "Age"
+        ],
+        "Rows": []
+      },
+      "type": {
+        "Headers": "ARRAY",
+        "Rows": "ARRAY"
+      },
+      "input": false,
       "output": false
     },
     "employee_data": {
@@ -27,8 +47,18 @@
         "headersJson": "{{headersJson}}"
       },
       "outputs": {
-        "Table": "{{employee_data}}"
+        "Response": "{{employee_data}}"
       }
+    },
+    "2": {
+      "ClassName": "NotificationWindow",
+      "FunctionName": "ShowJson",
+      "Inputs": {
+        "title": "Employee Data",
+        "json": "{{employee_data}}",
+        "autoCloseSeconds": 0
+      },
+      "outputs": {}
     }
   }
 }
