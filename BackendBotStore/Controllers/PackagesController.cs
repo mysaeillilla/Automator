@@ -14,21 +14,28 @@ public sealed record PackageActionView(
     int Id,
     int PackageId,
     string Name,
-    string? Description,
+    string Description,
+    string Category,
     Dictionary<string, string> Inputs,
     Dictionary<string, string> Outputs,
-    string[] Blocks,          // child action lists the designer should render: Then / Else / Body / Catch
-    bool HasCondition);       // true when the action takes a "Condition" (If, While)
+    string[] Blocks,
+    bool HasCondition,
+    string[] ConditionOperators,
+    string[] LogicalOperators,
+    bool SupportsMultipleConditions,
+    Dictionary<string, string> Properties
+);
 
-/// <summary>One package as returned by GET api/Packages.</summary>
 public sealed record PackageView(
     int Id,
     string Name,
     string Version,
     string? FilePath,
+    string Description,
     List<string> Dependencies,
     bool IsBuiltIn,
-    List<PackageActionView> Actions);
+    List<PackageActionView> Actions
+);
 
 [ApiController]
 [Route("api/[controller]")]
@@ -36,7 +43,7 @@ public class PackagesController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
     private readonly IWebHostEnvironment _environment;
-
+private readonly ICoreCatalog _core;
     private readonly string _packagesRoot;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -44,79 +51,99 @@ public class PackagesController : ControllerBase
         PropertyNameCaseInsensitive = true
     };
 
-    public PackagesController(
-        ApplicationDbContext context,
-        IWebHostEnvironment environment)
-    {
-        _context = context;
-        _environment = environment;
-
-        _packagesRoot = Path.Combine(
-            _environment.ContentRootPath,
-            "Packages");
-    }
+    public PackagesController(ApplicationDbContext context, IWebHostEnvironment environment, ICoreCatalog core)
+{
+    _context = context;
+    _environment = environment;
+    _core = core;
+    _packagesRoot = Path.Combine(_environment.ContentRootPath, "Packages");
+}
 
     // GET: api/Packages            -> built-in Core package first, then the uploaded packages
     // GET: api/Packages?includeCore=false -> uploaded packages only
     [HttpGet]
-    public async Task<IActionResult> GetPackages(
-        [FromQuery] bool includeCore = true,
-        CancellationToken cancellationToken = default)
+public async Task<IActionResult> GetPackages(
+    [FromQuery] bool includeCore = true,
+    CancellationToken cancellationToken = default)
+{
+    var entities = await _context.Packages
+        .AsNoTracking()
+        .Include(p => p.Actions)
+        .OrderBy(p => p.Name)
+        .ThenBy(p => p.Version)
+        .ToListAsync(cancellationToken);
+
+    var result = entities
+        .Select(p => new PackageView(
+            Id: p.Id,
+            Name: p.Name,
+            Version: p.Version,
+            FilePath: p.FilePath,
+            Description: p.Description,
+            Dependencies: p.Dependencies ?? new List<string>(),
+            IsBuiltIn: false,
+            Actions: p.Actions
+                .OrderBy(a => a.Name)
+                .Select(a => new PackageActionView(
+                    Id: a.Id,
+                    PackageId: a.PackageId,
+                    Name: a.Name,
+                    Description: a.Description,
+                    Category: a.Category,
+                    Inputs: a.Inputs ?? new Dictionary<string, string>(),
+                    Outputs: a.Outputs ?? new Dictionary<string, string>(),
+                    Blocks: a.Blocks?.ToArray() ?? Array.Empty<string>(),
+                    HasCondition: a.HasCondition,
+                    ConditionOperators: a.ConditionOperators?.ToArray()
+                        ?? Array.Empty<string>(),
+                    LogicalOperators: a.LogicalOperators?.ToArray()
+                        ?? Array.Empty<string>(),
+                    SupportsMultipleConditions: a.SupportsMultipleConditions,
+                    Properties: a.Properties
+                        ?? new Dictionary<string, string>()
+                ))
+                .ToList()
+        ))
+        .ToList();
+
+    if (includeCore)
     {
-        var entities = await _context.Packages
-            .AsNoTracking()
-            .Include(p => p.Actions)
-            .ToListAsync(cancellationToken);
-
-        var result = entities
-            .Select(p => new PackageView(
-                p.Id,
-                p.Name,
-                p.Version,
-                p.FilePath,
-                p.Dependencies,
-                IsBuiltIn: false,
-                Actions: p.Actions
-                    .Select(a => new PackageActionView(
-                        a.Id,
-                        a.PackageId,
-                        a.Name,
-                        Description: null,
-                        a.Inputs,
-                        a.Outputs,
-                        Blocks: Array.Empty<string>(),
-                        HasCondition: false))
-                    .ToList()))
-            .ToList();
-
-        if (includeCore)
-            result.Insert(0, BuildCorePackage());
-
-        return Ok(result);
+        result.Insert(0, BuildCorePackage());
     }
+
+    return Ok(result);
+}
 
     /// <summary>
     /// The built-in control actions as a virtual package. It is not stored in the database:
     /// Id 0 and negative action ids mark it as virtual so they never clash with real rows.
     /// </summary>
-    private static PackageView BuildCorePackage() => new(
-        Id: 0,
-        Name: CoreActionCatalog.PackageName,
-        Version: CoreActionCatalog.Version,
-        FilePath: null,
-        Dependencies: new List<string>(),
-        IsBuiltIn: true,
-        Actions: CoreActionCatalog.Actions
-            .Select((a, i) => new PackageActionView(
-                -(i + 1),
-                0,
-                a.Name,
-                a.Description,
-                a.Inputs,
-                a.Outputs,
-                a.Blocks,
-                a.HasCondition))
-            .ToList());
+    private PackageView BuildCorePackage() => new(
+    Id: 0,
+    Name: _core.PackageName,
+    Version: _core.Version,
+    FilePath: null,
+    Description: "Built-in workflow control and utility actions.",
+    Dependencies: new List<string>(),
+    IsBuiltIn: true,
+    Actions: _core.Actions
+        .Select((a, i) => new PackageActionView(
+            Id: -(i + 1),
+            PackageId: 0,
+            Name: a.Name,
+            Description: a.Description,
+            Category: a.Category,
+            Inputs: a.Inputs,
+            Outputs: a.Outputs,
+            Blocks: a.Blocks,
+            HasCondition: a.HasCondition,
+            ConditionOperators: a.ConditionOperators,
+            LogicalOperators: a.LogicalOperators,
+            SupportsMultipleConditions: a.SupportsMultipleConditions,
+            Properties: a.Properties
+        ))
+        .ToList()
+);
 
     // POST: api/Packages/upload
     [HttpPost("upload")]
@@ -204,12 +231,8 @@ public class PackagesController : ControllerBase
             }
 
             // "Core" is reserved for the executor's built-in control actions.
-            if (CoreActionCatalog.IsCoreName(
-                    Path.GetFileNameWithoutExtension(dto.PackageName)))
-            {
-                return BadRequest(
-                    $"'{CoreActionCatalog.PackageName}' is a reserved package name.");
-            }
+            if (_core.IsCoreName(Path.GetFileNameWithoutExtension(dto.PackageName)))
+    return BadRequest($"'{_core.PackageName}' is a reserved package name.");
 
             if (dto.Actions == null || dto.Actions.Count == 0)
             {
@@ -302,22 +325,28 @@ public class PackagesController : ControllerBase
             packageMoved = true;
 
             var package = new Package
-            {
-                Name = packageFolder,
-                Version = dto.Version,
-                FilePath = Path.Combine(
-                    finalPath,
-                    dto.PackageName),
-                Dependencies = dependencies,
+{
+    Name = packageFolder,
+    Version = dto.Version,
+    FilePath = Path.Combine(finalPath, dto.PackageName),
+    Dependencies = dependencies,
 
-                Actions = dto.Actions.Select(action =>
-                    new PackageAction
-                    {
-                        Name = action.ActionName,
-                        Inputs = action.Inputs ?? new(),
-                        Outputs = action.Outputs ?? new()
-                    }).ToList()
-            };
+    Actions = dto.Actions.Select(action => new PackageAction
+    {
+        Name = action.ActionName,
+        Inputs = action.Inputs ?? new(),
+        Outputs = action.Outputs ?? new(),
+
+        Description = string.Empty,
+        Category = "General",
+        Blocks = new(),
+        HasCondition = false,
+        ConditionOperators = new(),
+        LogicalOperators = new(),
+        SupportsMultipleConditions = false,
+        Properties = new()
+    }).ToList()
+};
 
             _context.Packages.Add(package);
 

@@ -31,7 +31,8 @@ public sealed class WorkflowVariable
     public object? Value { get; set; }
 
     /// <summary>
-    /// Declared type: "STRING" | "NUMBER" | "BOOLEAN" | "LIST" | "DICTIONARY" | "DATATABLE" | "ANY",
+    /// Declared type: a name registered in ICoreCatalog.VariableTypes
+    /// ("STRING" | "NUMBER" | "BOOLEAN" | "LIST" | "DICTIONARY" | "DATATABLE" | "ANY" | ...),
     /// or an object describing a structure (kept raw, not coerced).
     /// </summary>
     public JsonElement Type { get; set; }
@@ -86,6 +87,10 @@ public sealed class LegacyActionsConverter : JsonConverter<List<WorkflowAction>>
 public class WorkflowExecutor
 {
     public const string CorePackage = "Core";
+
+    private readonly ICoreCatalog _catalog;
+
+    public WorkflowExecutor(ICoreCatalog catalog) => _catalog = catalog;
 
     // {{var}}  {{var.Prop}}  {{var[0]}}  {{var['Column Name']}}  {{var.Items[2].Name}}
     private static readonly Regex TemplateRegex = new(
@@ -168,6 +173,10 @@ public class WorkflowExecutor
             // 2. Variables
             foreach (var (name, variable) in definition.Variables ?? new())
             {
+                if (variable.Type.ValueKind == JsonValueKind.String &&
+                    !_catalog.TryGetVariableType(variable.Type.GetString(), out _))
+                    return Fail($"Variable '{name}' has unknown type '{variable.Type.GetString()}'.");
+
                 variable.Value = Normalize(variable.Value);
                 Variables[name] = variable;
             }
@@ -362,7 +371,12 @@ public class WorkflowExecutor
                     throw new InvalidOperationException(
                         Convert.ToString(inputs.GetValueOrDefault("Message")) ?? "Workflow failed.");
                 default:
-                    throw new MissingMethodException($"Unknown core action '{a.FunctionName}'.");
+                    // actions added through ICoreCatalog (RegisterAction with a Handler)
+                    if (!_catalog.TryGetAction(a.FunctionName, out var info) || info.Handler is null)
+                        throw new MissingMethodException($"Core action '{a.FunctionName}' has no implementation.");
+                    result = info.Handler(inputs);
+                    producesValue = info.Outputs.Count > 0;
+                    break;
             }
 
             var written = producesValue ? MapOutputs(a, result) : new Dictionary<string, object?>();
@@ -514,7 +528,8 @@ public class WorkflowExecutor
         return false;
     }
 
-    private static bool TryNumber(object? v, out double d)
+    // internal: also used by the built-in variable-type coercers in CoreCatalog
+    internal static bool TryNumber(object? v, out double d)
     {
         d = 0;
         if (v is null or bool) return false;
@@ -527,7 +542,7 @@ public class WorkflowExecutor
         return false;
     }
 
-    private static bool ToBool(object? v) => v switch
+    internal static bool ToBool(object? v) => v switch
     {
         null => false,
         bool b => b,
@@ -662,20 +677,17 @@ public class WorkflowExecutor
         variable.Value = Coerce(value, variable.Type);
     }
 
-    /// <summary>Coerces to the declared scalar type. LIST / DICTIONARY / DATATABLE / ANY / structured types pass through.</summary>
-    private static object? Coerce(object? value, JsonElement declared)
+    /// <summary>
+    /// Coerces to the declared type using the coercer registered in ICoreCatalog.
+    /// Types without a coercer (LIST / DICTIONARY / DATATABLE / ANY) and structured types pass through.
+    /// </summary>
+    private object? Coerce(object? value, JsonElement declared)
     {
         if (value is null || declared.ValueKind != JsonValueKind.String) return value;
 
-        return declared.GetString()!.ToUpperInvariant() switch
-        {
-            "STRING"  => (object)(value as string ?? Stringify(value)),
-            "BOOLEAN" => ToBool(value),
-            "NUMBER"  => TryNumber(value, out var d)
-                            ? (d % 1 == 0 && Math.Abs(d) < 9e18 ? (object)(long)d : d)
-                            : throw new InvalidOperationException($"'{value}' is not a number."),
-            _ => value
-        };
+        return _catalog.TryGetVariableType(declared.GetString(), out var type) && type.Coerce is { } coerce
+            ? coerce(value)
+            : value;
     }
 
     // ─────────────────────────────────────────────────────────
@@ -698,6 +710,9 @@ public class WorkflowExecutor
 
             if (!IsCore(a) && !Packages.ContainsKey(a.ClassName))
                 throw new InvalidOperationException($"Action {id}: package '{a.ClassName}' is not listed in 'packages'.");
+
+            if (IsCore(a) && !_catalog.Contains(a.FunctionName))
+                throw new InvalidOperationException($"Action {id}: unknown Core action '{a.FunctionName}'.");
 
             foreach (var name in GetInputVariables(a))
                 if (!Variables.ContainsKey(name))
@@ -999,7 +1014,7 @@ public class WorkflowExecutor
             ? v.Value
             : throw new InvalidOperationException($"Variable '{name}' is not defined.");
 
-    private static string Stringify(object? value) => value switch
+    internal static string Stringify(object? value) => value switch
     {
         null => string.Empty,
         string s => s,

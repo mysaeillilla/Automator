@@ -17,7 +17,7 @@ builder.Services.AddCors(options =>
               .AllowAnyMethod());
 });
 builder.Services.AddControllers();
-
+builder.Services.AddCoreCatalog();
 // Configure CORS
 builder.Services.AddCors(options =>
 {

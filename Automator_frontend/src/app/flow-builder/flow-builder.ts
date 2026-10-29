@@ -1,4 +1,5 @@
 import { Component, DestroyRef, ElementRef, HostListener, computed, inject, signal, viewChild, OnInit } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
@@ -40,6 +41,14 @@ export interface Binding {
   varValue: string;  // initial value of the variable (only used if the variable is NOT declared in the Variables pane)
 }
 
+export type WorkflowBranch = 'Body' | 'Catch' | 'Then' | 'Else';
+
+export interface WorkflowCondition {
+  Left: unknown;
+  Operator: string;
+  Right: unknown;
+}
+
 export interface FlowNode {
   id: number;
   x: number;
@@ -48,6 +57,12 @@ export interface FlowNode {
   action: PackageAction;
   inputs: Record<string, Binding>;
   outputs: Record<string, string>; // output name -> variable name
+
+  /** Set for actions nested inside TryCatch/If blocks. */
+  parentId?: number | null;
+  branch?: WorkflowBranch | null;
+  /** Used by Core.If. */
+  condition?: WorkflowCondition;
 }
 
 export interface Connection {
@@ -71,12 +86,18 @@ export interface VarSuggestion {
   source: 'declared' | 'output';
 }
 
-// NEW: shape returned by GET /api/Workflows/{id}
+// Shape used by saved workflow JSON. Both Outputs and legacy outputs are accepted.
 export interface WorkflowStep {
   ClassName: string;
   FunctionName: string;
   Inputs?: Record<string, unknown>;
+  Outputs?: Record<string, string>;
   outputs?: Record<string, string>;
+  Body?: WorkflowStep[];
+  Catch?: WorkflowStep[];
+  Condition?: WorkflowCondition;
+  Then?: WorkflowStep[];
+  Else?: WorkflowStep[];
 }
 
 export interface WorkflowDefinition {
@@ -171,13 +192,21 @@ export function generateWorkflow(
   conns: Connection[],
   declared: FlowVariable[] = [],
 ) {
-  const ordered = sortNodes(nodes, conns);
   const packages: Record<string, string> = {};
   const variables: Record<string, any> = {};
   const actions: Record<string, any> = {};
 
+  // Include nested actions when calculating output variables and package references.
   const produced = new Set<string>();
-  ordered.forEach(n => Object.values(n.outputs).forEach(v => v.trim() && produced.add(varName(v))));
+  for (const n of nodes) {
+    for (const value of Object.values(n.outputs)) {
+      if (value.trim()) produced.add(varName(value));
+    }
+
+    const cls = n.pkg.className ?? CLASS_NAMES[n.pkg.name] ?? n.pkg.name.replace(/\s+/g, '');
+    // Core control-flow actions are built into the runner and are not package DLLs.
+    if (cls !== 'Core' && !cls.startsWith('Core.')) packages[n.pkg.name] = '';
+  }
 
   // 1) Variables created in the Variables pane always go into the JSON.
   declared.forEach(d => {
@@ -191,17 +220,28 @@ export function generateWorkflow(
     };
   });
 
-  // 2) Actions
-  ordered.forEach((n, i) => {
-    packages[n.pkg.name] = '';
+  const siblings = (parentId: number | null, branch?: WorkflowBranch): FlowNode[] => {
+    const list = nodes.filter(n => (n.parentId ?? null) === parentId && (parentId === null || n.branch === branch));
+    if (!list.length) return [];
+    const ids = new Set(list.map(n => n.id));
+    const siblingConnections = conns.filter(c => ids.has(c.from) && ids.has(c.to));
+    return sortNodes(list, siblingConnections);
+  };
 
+  const isTryCatch = (n: FlowNode) => n.action.name.toLowerCase() === 'trycatch';
+  const isIf = (n: FlowNode) => n.action.name.toLowerCase() === 'if';
+
+  const serializeNode = (n: FlowNode): any => {
     const inputs: Record<string, any> = {};
-    for (const [key, type] of Object.entries(n.action.inputs)) {
-      const b = n.inputs[key];
+    // Include keys present in either the package metadata or a loaded workflow.
+    const inputKeys = new Set([...Object.keys(n.action.inputs ?? {}), ...Object.keys(n.inputs ?? {})]);
+    for (const key of inputKeys) {
+      const type = n.action.inputs?.[key] ?? 'STRING';
+      const b = n.inputs[key] ?? { mode: 'literal' as const, value: defaultLiteral(type), varValue: '' };
       if (b.mode === 'variable' && b.value.trim()) {
         const v = varName(b.value);
         inputs[key] = `{{${v}}}`;
-        if (!variables[v]) { // not declared -> create it from the inline initial value
+        if (!variables[v]) {
           variables[v] = {
             value: b.varValue === '' ? defaultFor(type) : coerce(b.varValue, type),
             type: mapType(type),
@@ -214,19 +254,44 @@ export function generateWorkflow(
       }
     }
 
-    const outputs: Record<string, string> = {};
-    for (const [key, type] of Object.entries(n.action.outputs)) {
+    const outputBindings: Record<string, string> = {};
+    const outputKeys = new Set([...Object.keys(n.action.outputs ?? {}), ...Object.keys(n.outputs ?? {})]);
+    for (const key of outputKeys) {
+      const type = n.action.outputs?.[key] ?? 'STRING';
       const v = varName(n.outputs[key] || `${n.action.name}_${key}_${n.id}`);
-      outputs[key] = `{{${v}}}`;
+      outputBindings[key] = `{{${v}}}`;
       if (variables[v]) {
-        variables[v].output = true;           // keep declared type / initial value
+        variables[v].output = true;
       } else {
         variables[v] = { value: defaultFor(type), type: mapType(type), input: false, output: true };
       }
     }
 
     const cls = n.pkg.className ?? CLASS_NAMES[n.pkg.name] ?? n.pkg.name.replace(/\s+/g, '');
-    actions[String(i + 1)] = { ClassName: cls, FunctionName: n.action.name, Inputs: inputs, outputs };
+    const step: any = {
+      ClassName: cls,
+      FunctionName: n.action.name,
+      Inputs: inputs,
+      Outputs: outputBindings,
+    };
+
+    if (isTryCatch(n)) {
+      step.Body = siblings(n.id, 'Body').map(serializeNode);
+      step.Catch = siblings(n.id, 'Catch').map(serializeNode);
+    }
+
+    if (isIf(n)) {
+      step.Condition = n.condition ?? { Left: '', Operator: 'equal', Right: '' };
+      step.Then = siblings(n.id, 'Then').map(serializeNode);
+      step.Else = siblings(n.id, 'Else').map(serializeNode);
+    }
+
+    return step;
+  };
+
+  // Actions in the top-level Actions object; nested steps are emitted under Body/Catch/Then/Else.
+  siblings(null).forEach((n, index) => {
+    actions[String(index + 1)] = serializeNode(n);
   });
 
   return { flow_name: name, version, packages, variables, Actions: actions };
@@ -237,7 +302,7 @@ export function generateWorkflow(
 @Component({
   selector: 'app-flow-builder',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, NgTemplateOutlet],
   templateUrl: './flow-builder.html',
   styleUrl: './flow-builder.css',
 })
@@ -358,7 +423,7 @@ export class FlowBuilderComponent implements OnInit {
     this.nodes().forEach(n =>
       Object.entries(n.action.outputs).forEach(([k, t]) => {
         const name = varName(n.outputs[k] ?? '');
-        if (name && !map.has(name)) map.set(name, { name, type: mapType(t), source: 'output' });
+        if (name && !map.has(name)) map.set(name, { name, type: mapType(String(t)), source: 'output' });
       }),
     );
     return [...map.values()];
@@ -416,7 +481,7 @@ export class FlowBuilderComponent implements OnInit {
       takeUntilDestroyed(this.destroyRef),
     ).subscribe({
       next: ({ packages, record }) => {
-        this.packages.set(packages);       // packages must be set first: loadWorkflow resolves against them
+        this.packages.set(this.withCoreActions(packages)); // add built-in control-flow actions before loading nested JSON
         if (record) this.loadWorkflow(record);
         else this.resetCanvas();
         this.loading.set(false);
@@ -436,6 +501,32 @@ export class FlowBuilderComponent implements OnInit {
     this.seq = 1;
   }
 
+  /** Ensure core control-flow actions exist even when they are not stored in the package library API. */
+  private withCoreActions(packages: BotPackage[]): BotPackage[] {
+    const builtIns: PackageAction[] = [
+      { id: -1, packageId: -100, name: 'TryCatch', inputs: {}, outputs: { Error: 'STRING' } },
+      { id: -2, packageId: -100, name: 'SetVariable', inputs: { Value: 'STRING' }, outputs: { Response: 'STRING' } },
+      { id: -3, packageId: -100, name: 'If', inputs: {}, outputs: {} },
+    ];
+
+    const coreIndex = packages.findIndex(p => p.className === 'Core' || p.name.replace(/\s+/g, '') === 'Core');
+    if (coreIndex < 0) {
+      return [...packages, {
+        id: -100, name: 'Core', version: '1.0.0', filePath: '', dependencies: [],
+        className: 'Core', actions: builtIns,
+      }];
+    }
+
+    const core = packages[coreIndex];
+    const actions = [...(core.actions ?? [])];
+    for (const builtin of builtIns) {
+      if (!actions.some(a => a.name.toLowerCase() === builtin.name.toLowerCase())) {
+        actions.push({ ...builtin, packageId: core.id });
+      }
+    }
+    return packages.map((p, i) => i === coreIndex ? { ...p, className: p.className ?? 'Core', actions } : p);
+  }
+
   private findPackage(className: string): BotPackage | undefined {
     return this.packages().find(p =>
       p.className === className ||
@@ -450,52 +541,92 @@ export class FlowBuilderComponent implements OnInit {
     return m ? m[1] : null;
   }
 
-  /** Rebuild the canvas from a saved workflow record. */
+  /** Rebuild the canvas from a saved workflow record, including nested control-flow branches. */
   private loadWorkflow(rec: WorkflowRecord) {
     const wf = rec.workflow;
     this.resetCanvas();
     this.flowName.set(wf.flow_name ?? rec.name);
     this.flowVersion.set(wf.version ?? rec.version);
 
-    const steps = Object.entries(wf.Actions ?? {}).sort(([a], [b]) => Number(a) - Number(b));
+    const rootSteps = Object.entries(wf.Actions ?? {})
+      .sort(([a], [b]) => Number(a) - Number(b))
+      .map(([, step]) => step);
     const nodes: FlowNode[] = [];
+    const conns: Connection[] = [];
     const missing: string[] = [];
 
-    for (const [, step] of steps) {
-      const pkg = this.findPackage(step.ClassName);
-      const action = pkg?.actions.find(a => a.name === step.FunctionName);
-      if (!pkg || !action) { missing.push(`${step.ClassName}.${step.FunctionName}`); continue; }
+    const loadSteps = (
+      steps: WorkflowStep[],
+      parentId: number | null = null,
+      branch?: WorkflowBranch,
+      depth = 0,
+    ): void => {
+      const siblingIds: number[] = [];
 
-      const id = this.seq++;
+      for (const step of steps) {
+        const pkg = this.findPackage(step.ClassName);
+        const action = pkg?.actions.find(a => a.name === step.FunctionName);
+        if (!pkg || !action) {
+          missing.push(`${step.ClassName}.${step.FunctionName}`);
+          continue;
+        }
 
-      const inputs: Record<string, Binding> = {};
-      this.keys(action.inputs).forEach(k => {
-        const raw = step.Inputs?.[k];
-        const ref = this.unwrapVar(raw);
-        inputs[k] = ref !== null
-          ? { mode: 'variable', value: ref, varValue: '' }
-          : {
-              mode: 'literal',
-              value: raw === undefined || raw === null
-                ? defaultLiteral(action.inputs[k])
-                : typeof raw === 'object' ? JSON.stringify(raw) : String(raw),
-              varValue: '',
-            };
-      });
+        const id = this.seq++;
+        const rawInputs = step.Inputs ?? {};
+        const inputs: Record<string, Binding> = {};
+        const inputKeys = new Set([...Object.keys(action.inputs ?? {}), ...Object.keys(rawInputs)]);
+        inputKeys.forEach(k => {
+          const raw = rawInputs[k];
+          const type = action.inputs?.[k] ?? 'STRING';
+          const ref = this.unwrapVar(raw);
+          inputs[k] = ref !== null
+            ? { mode: 'variable', value: ref, varValue: '' }
+            : {
+                mode: 'literal',
+                value: raw === undefined || raw === null
+                  ? defaultLiteral(type)
+                  : typeof raw === 'object' ? JSON.stringify(raw) : String(raw),
+                varValue: '',
+              };
+        });
 
-      const outputs: Record<string, string> = {};
-      this.keys(action.outputs).forEach(k => {
-        outputs[k] = this.unwrapVar(step.outputs?.[k]) ?? `${action.name}_${k}_${id}`;
-      });
+        const rawOutputs = step.Outputs ?? step.outputs ?? {};
+        const outputs: Record<string, string> = {};
+        const outputKeys = new Set([...Object.keys(action.outputs ?? {}), ...Object.keys(rawOutputs)]);
+        outputKeys.forEach(k => {
+          outputs[k] = this.unwrapVar(rawOutputs[k]) ?? `${action.name}_${k}_${id}`;
+        });
 
-      // Saved JSON has no coordinates: stack the steps vertically, like Power Automate.
-      nodes.push({ id, x: 160, y: 60 + nodes.length * 120, pkg, action, inputs, outputs });
-    }
+        const node: FlowNode = {
+          id,
+          x: 160 + depth * 260,
+          y: 60 + nodes.length * 120,
+          pkg,
+          action,
+          inputs,
+          outputs,
+          parentId,
+          branch: branch ?? null,
+          ...(step.Condition ? { condition: step.Condition } : {}),
+        };
+        nodes.push(node);
+        siblingIds.push(id);
 
-    // Saved JSON has no edges either: execution order = step order.
-    const conns: Connection[] = nodes.slice(1).map((n, i) => ({ id: this.seq++, from: nodes[i].id, to: n.id }));
+        if (step.Body?.length) loadSteps(step.Body, id, 'Body', depth + 1);
+        if (step.Catch?.length) loadSteps(step.Catch, id, 'Catch', depth + 1);
+        if (step.Then?.length) loadSteps(step.Then, id, 'Then', depth + 1);
+        if (step.Else?.length) loadSteps(step.Else, id, 'Else', depth + 1);
+      }
 
-    // Variables not produced by an action output are user-declared (Variables pane).
+      // Connections are created only between siblings in the same sequence/branch.
+      for (let i = 1; i < siblingIds.length; i++) {
+        conns.push({ id: this.seq++, from: siblingIds[i - 1], to: siblingIds[i] });
+      }
+    };
+
+    loadSteps(rootSteps);
+
+    // Treat variables not produced by any root or nested action as declared input variables.
     const produced = new Set(nodes.flatMap(n => Object.values(n.outputs).map(varName)));
     const declared: FlowVariable[] = Object.entries(wf.variables ?? {})
       .filter(([name]) => !produced.has(name))
@@ -514,9 +645,10 @@ export class FlowBuilderComponent implements OnInit {
 
     if (missing.length) {
       this.submitSuccess.set(false);
-      this.submitMessage.set(`Skipped actions not found in the package library: ${missing.join(', ')}`);
+      this.submitMessage.set(`Some actions were skipped because they were not found in the package library: ${missing.join(', ')}`);
     }
   }
+
 
   keys = (o: object) => Object.keys(o);
   orderOf = (id: number) => this.order().indexOf(id) + 1;
@@ -592,13 +724,130 @@ export class FlowBuilderComponent implements OnInit {
     this.keys(action.inputs).forEach(k => (inputs[k] = { mode: 'literal', value: defaultLiteral(action.inputs[k]), varValue: '' }));
     const outputs: Record<string, string> = {};
     this.keys(action.outputs).forEach(k => (outputs[k] = `${action.name}_${k}_${id}`));
-    this.nodes.update(n => [...n, { id, x: Math.max(0, x), y: Math.max(0, y), pkg, action, inputs, outputs }]);
+    const node: FlowNode = { id, x: Math.max(0, x), y: Math.max(0, y), pkg, action, inputs, outputs, parentId: null, branch: null };
+    if (action.name.toLowerCase() === 'if') {
+      node.condition = { Left: '', Operator: 'greaterOrEqual', Right: 0 };
+    }
+    this.nodes.update(n => [...n, node]);
     this.select(id);
   }
 
+  /** Assign an action to a TryCatch/If branch. Expose this for the node properties template. */
+  setNodePlacement(nodeId: number, parentId: number | null, branch: WorkflowBranch | null) {
+    const list = this.nodes();
+    const node = list.find(n => n.id === nodeId);
+    if (!node) return;
+    if (parentId === nodeId) return;
+
+    if (parentId !== null) {
+      const parent = list.find(n => n.id === parentId);
+      if (!parent || !branch) return;
+      const parentAction = parent.action.name.toLowerCase();
+      const validBranch = parentAction === 'trycatch'
+        ? branch === 'Body' || branch === 'Catch'
+        : parentAction === 'if'
+          ? branch === 'Then' || branch === 'Else'
+          : false;
+      if (!validBranch) return;
+
+      // Prevent parent/child cycles in the generated workflow tree.
+      let ancestor: FlowNode | undefined = parent;
+      while (ancestor) {
+        if (ancestor.id === nodeId) return;
+        ancestor = ancestor.parentId == null ? undefined : list.find(n => n.id === ancestor!.parentId);
+      }
+    }
+
+    // Connections encode ordering inside a sibling list, so discard this node's old edges.
+    this.connections.update(items => items.filter(c => c.from !== nodeId && c.to !== nodeId));
+    this.nodes.update(items => items.map(n => n.id === nodeId
+      ? { ...n, parentId, branch: parentId === null ? null : branch }
+      : n));
+    this.touch();
+  }
+
+  /** Update the Core.If condition from the properties template. */
+  setCondition(nodeId: number, field: keyof WorkflowCondition, value: unknown) {
+    this.nodes.update(list => list.map(n => {
+      if (n.id !== nodeId) return n;
+      const current = n.condition ?? { Left: '', Operator: 'equal', Right: '' };
+      return { ...n, condition: { ...current, [field]: value } as WorkflowCondition };
+    }));
+    this.touch();
+  }
+
+  /** Top-level actions, ordered by their workflow connections/position. */
+  rootNodes(): FlowNode[] {
+    const roots = this.nodes().filter(n => n.parentId == null);
+    const ids = new Set(roots.map(n => n.id));
+    return sortNodes(roots, this.connections().filter(c => ids.has(c.from) && ids.has(c.to)));
+  }
+
+  /** Children rendered inside a TryCatch/If branch, in execution order. */
+  childrenOf(parentId: number, branch: WorkflowBranch): FlowNode[] {
+    const children = this.nodes().filter(n => n.parentId === parentId && n.branch === branch);
+    const ids = new Set(children.map(n => n.id));
+    return sortNodes(children, this.connections().filter(c => ids.has(c.from) && ids.has(c.to)));
+  }
+
+  isTryCatch(node: FlowNode): boolean {
+    return node.action.name.toLowerCase() === 'trycatch';
+  }
+
+  isIf(node: FlowNode): boolean {
+    return node.action.name.toLowerCase() === 'if';
+  }
+
+  parentActionName(parentId: number): string {
+    const parent = this.nodes().find(n => n.id === parentId);
+    return parent ? parent.action.name : 'parent action';
+  }
+
+  zoomPercent(): number {
+    return Math.round(this.zoom() * 100);
+  }
+
+  /** Keep numeric condition values numeric in the emitted JSON; preserve variable references as text. */
+  parseConditionValue(value: string): unknown {
+    const trimmed = String(value ?? '').trim();
+    if (!trimmed) return '';
+    if (/^\{\{\s*.+?\s*\}\}$/.test(trimmed)) return trimmed;
+    if (trimmed.toLowerCase() === 'true') return true;
+    if (trimmed.toLowerCase() === 'false') return false;
+    const numeric = Number(trimmed);
+    return Number.isFinite(numeric) ? numeric : trimmed;
+  }
+
+  /** Handle a palette action dropped into a specific control-flow branch. */
+  dropIntoBranch(e: DragEvent, parentId: number, branch: WorkflowBranch): void {
+    e.preventDefault();
+    e.stopPropagation();
+    const [pid, aid] = (e.dataTransfer?.getData('text/plain') ?? '').split(':').map(Number);
+    const pkg = this.packages().find(p => p.id === pid);
+    const action = pkg?.actions.find(a => a.id === aid);
+    if (!pkg || !action) return;
+
+    const point = this.toSurface(e);
+    this.addNode(pkg, action, point.x - this.NODE_W / 2, point.y - this.NODE_H / 2);
+    const newNodeId = this.seq - 1;
+    this.setNodePlacement(newNodeId, parentId, branch);
+  }
+
   removeNode(id: number) {
-    this.nodes.update(n => n.filter(x => x.id !== id));
-    this.connections.update(c => c.filter(x => x.from !== id && x.to !== id));
+    // Removing a control-flow parent also removes its nested branch actions.
+    const removed = new Set<number>([id]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const node of this.nodes()) {
+        if (node.parentId != null && removed.has(node.parentId) && !removed.has(node.id)) {
+          removed.add(node.id);
+          changed = true;
+        }
+      }
+    }
+    this.nodes.update(list => list.filter(node => !removed.has(node.id)));
+    this.connections.update(list => list.filter(c => !removed.has(c.from) && !removed.has(c.to)));
     this.selectedId.set(null);
   }
   removeConnection(id: number) { this.connections.update(c => c.filter(x => x.id !== id)); }

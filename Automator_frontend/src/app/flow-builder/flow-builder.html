@@ -1,486 +1,475 @@
 <div class="flow-builder">
-
-  <!-- Top app bar -->
   <header class="topbar">
-    <button type="button" class="icon-btn on-blue" aria-label="Apps">⠿</button>
-    <span class="topbar-title">Able Automator</span>
-
-    <div class="topbar-search">
-      <span aria-hidden="true">⌕</span>
-      <input
-        aria-label="Search actions"
-        placeholder="Search actions"
-        [ngModel]="search()"
-        (ngModelChange)="search.set($event)" />
+    <div class="brand-block">
+      <div class="brand-mark">AF</div>
+      <div>
+        <h1>Workflow Builder</h1>
+        <p>Build, configure and export automation workflows</p>
+      </div>
     </div>
 
-    <div class="topbar-right">
-      <span class="env">
-        <small>Environment</small>
-        <b>Default</b>
-      </span>
-      <button type="button" class="icon-btn on-blue" aria-label="Settings">⚙</button>
-      <button type="button" class="icon-btn on-blue" aria-label="Help">?</button>
-      <span class="avatar" aria-hidden="true">S</span>
+    <div class="flow-meta">
+      <label>
+        <span>Flow name</span>
+        <input
+          type="text"
+          [ngModel]="flowName()"
+          (ngModelChange)="flowName.set($event)"
+          placeholder="Enter flow name"
+        />
+      </label>
+      <label class="version-field">
+        <span>Version</span>
+        <input
+          type="text"
+          [ngModel]="flowVersion()"
+          (ngModelChange)="flowVersion.set($event)"
+          placeholder="1.0.0"
+        />
+      </label>
+    </div>
+
+    <div class="top-actions">
+      <button type="button" class="btn btn-light" (click)="back()">Back</button>
+      <button type="button" class="btn btn-light" (click)="download()">Download JSON</button>
+      <button type="button" class="btn btn-primary" [disabled]="submitting()" (click)="submitWorkflow()">
+        {{ submitting() ? 'Saving…' : 'Save workflow' }}
+      </button>
     </div>
   </header>
 
-  <!-- Flow command bar -->
-  <div class="subbar">
-    <button type="button" class="icon-btn" aria-label="Back" (click)="back()">←</button>
-
-    <input
-      class="flow-title"
-      aria-label="Flow name"
-      [ngModel]="flowName()"
-      (ngModelChange)="flowName.set($event)"
-      placeholder="Untitled workflow" />
-
-    @if (workflowId() !== null) {
-      <span class="id-chip" title="Workflow id">#{{ workflowId() }}</span>
-    }
-
-    <div class="subbar-actions">
-      <button type="button" class="link-btn" (click)="download()" [disabled]="!nodes().length">
-        <span aria-hidden="true">↓</span> Download JSON
-      </button>
-
-      <button type="button" class="link-btn" (click)="panelOpen.set(!panelOpen())">
-        <span aria-hidden="true">✦</span> Configuration
-      </button>
-
-      <button
-        type="button"
-        class="link-btn primary"
-        (click)="submitWorkflow()"
-        [disabled]="!nodes().length || submitting()">
-        <span aria-hidden="true">▣</span>
-        {{ submitting() ? 'Saving...' : 'Save' }}
-      </button>
-    </div>
-  </div>
-
-  <!-- Status banner -->
+  @if (error()) {
+    <div class="notice notice-error" role="alert">{{ error() }}</div>
+  }
   @if (submitMessage()) {
-    <div
-      class="submit-message"
-      role="status"
-      [class.success]="submitSuccess()"
-      [class.failure]="!submitSuccess()">
-      <span class="status-dot"></span>
+    <div class="notice" [class.notice-success]="submitSuccess()" [class.notice-error]="!submitSuccess()" role="status">
       {{ submitMessage() }}
     </div>
   }
 
-  <div class="layout" [class.lib-closed]="!libraryOpen()" [class.panel-closed]="!panelOpen()">
-
-    <!-- LEFT: action library -->
-    <aside class="side action-panel" [class.collapsed]="!libraryOpen()">
-
-      <button
-        type="button"
-        class="collapse-btn"
-        [attr.aria-label]="libraryOpen() ? 'Collapse action library' : 'Expand action library'"
-        (click)="libraryOpen.set(!libraryOpen())">
-        {{ libraryOpen() ? '«' : '»' }}
-      </button>
+  <div class="workspace">
+    <!-- Action library -->
+    <aside class="library-panel" [class.panel-collapsed]="!libraryOpen()">
+      <div class="panel-heading">
+        <div>
+          <h2>Action library</h2>
+          <p>Drag an action onto the canvas or into a control-flow branch.</p>
+        </div>
+        <button type="button" class="icon-button" [attr.aria-label]="libraryOpen() ? 'Collapse action library' : 'Expand action library'" (click)="libraryOpen.set(!libraryOpen())">
+          {{ libraryOpen() ? '‹' : '›' }}
+        </button>
+      </div>
 
       @if (libraryOpen()) {
-        <div class="panel-heading">
-          <h3>Actions</h3>
-          <p>Drag onto the canvas, or double-click to add</p>
+        <div class="library-search">
+          <span class="search-icon">⌕</span>
+          <input
+            type="search"
+            aria-label="Search actions"
+            placeholder="Search packages or actions…"
+            [ngModel]="search()"
+            (ngModelChange)="search.set($event)"
+          />
+          @if (search()) {
+            <button type="button" class="clear-search" aria-label="Clear search" (click)="search.set('')">×</button>
+          }
         </div>
 
         @if (loading()) {
-          <p class="hint">Loading...</p>
+          <div class="empty-state">Loading action library…</div>
+        } @else if (!groups().length) {
+          <div class="empty-state">No actions found.</div>
+        } @else {
+          <div class="package-list">
+            @for (group of groups(); track group.pkg.id) {
+              <section class="package-group">
+                <button type="button" class="package-heading-button" (click)="toggleGroup($event, group.pkg.id)">
+                  <span class="package-icon" [style.background]="accentOf(group.pkg.id)">{{ group.pkg.name.slice(0, 1).toUpperCase() }}</span>
+                  <span class="package-name">{{ group.pkg.name }}<small>{{ group.actions.length }} action{{ group.actions.length === 1 ? '' : 's' }}</small></span>
+                  <span class="chevron" [class.chevron-open]="isExpanded(group.pkg.id)">⌄</span>
+                </button>
+
+                @if (isExpanded(group.pkg.id)) {
+                  <div class="action-list">
+                    @for (action of group.actions; track action.id) {
+                      <div class="palette-action" draggable="true" (dragstart)="onDragStart($event, group.pkg, action)">
+                        <div class="palette-action-copy">
+                          <span class="action-dot" [style.background]="accentOf(group.pkg.id)"></span>
+                          <span>{{ action.name }}</span>
+                        </div>
+                        <button
+                          type="button"
+                          class="add-action-button"
+                          title="Add action to canvas"
+                          [attr.aria-label]="'Add ' + action.name"
+                          (click)="addNode(group.pkg, action, 160, 60 + rootNodes().length * 150)"
+                        >+</button>
+                      </div>
+                    }
+                  </div>
+                }
+              </section>
+            }
+          </div>
         }
-
-        @if (error()) {
-          <p class="err" role="alert">{{ error() }}</p>
-        }
-
-        <div class="action-groups">
-          @for (g of groups(); track g.pkg.id) {
-            <details class="package-group" [open]="isExpanded(g.pkg.id)">
-              <summary (click)="toggleGroup($event, g.pkg.id)">
-                <span class="chev" aria-hidden="true">›</span>
-                <span class="package-mark" aria-hidden="true" [style.--accent]="accentOf(g.pkg.id)"></span>
-                <span class="package-name">{{ g.pkg.name }}</span>
-                <small>v{{ g.pkg.version }} · {{ g.actions.length }}</small>
-              </summary>
-
-              @if (isExpanded(g.pkg.id)) {
-                <div class="package-actions">
-                  @for (a of g.actions; track a.id) {
-                    <div
-                      class="item"
-                      draggable="true"
-                      title="Drag onto the canvas (or double-click)"
-                      (dragstart)="onDragStart($event, g.pkg, a)"
-                      (dblclick)="addNode(g.pkg, a, 160, 60 + nodes().length * 120)">
-
-                      <span class="action-symbol" aria-hidden="true" [style.--accent]="accentOf(g.pkg.id)">✧</span>
-
-                      <span class="action-info">
-                        <span class="action-name">{{ a.name }}</span>
-                        <small>{{ keys(a.inputs).length }} in, {{ keys(a.outputs).length }} out</small>
-                      </span>
-
-                      <span class="drag-symbol" aria-hidden="true">⠿</span>
-                    </div>
-                  }
-                </div>
-              }
-            </details>
-          }
-        </div>
       }
     </aside>
 
-    <!-- CENTER: canvas -->
-    <main
-      class="canvas"
-      (dragover)="$event.preventDefault()"
-      (drop)="onDrop($event)"
-      (pointerdown)="selectedId.set(null)">
-
-      <div class="canvas-viewport">
-        <div class="surface" #surface [style.transform]="'scale(' + zoom() + ')'">
-
-          <svg class="wires" aria-hidden="true">
-            <defs>
-              <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5"
-                      markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-                <path d="M0 0 L10 5 L0 10 z" class="arrow-head" />
-              </marker>
-            </defs>
-
-            @for (c of connections(); track c.id) {
-              <path class="wire-hit" [attr.d]="path(c)" (click)="removeConnection(c.id)" />
-              <path class="wire" [attr.d]="path(c)" marker-end="url(#arrow)" />
-            }
-
-            @if (pending()) {
-              <path class="wire temp" [attr.d]="pendingPath()" />
-            }
-          </svg>
-
-          @for (n of nodes(); track n.id) {
-            <div
-              class="node"
-              [class.sel]="n.id === selectedId()"
-              [style.--accent]="accentOf(n.pkg.id)"
-              [style.left.px]="n.x"
-              [style.top.px]="n.y"
-              [style.width.px]="NODE_W"
-              [style.height.px]="NODE_H"
-              (pointerdown)="$event.stopPropagation(); select(n.id)">
-
-              <div class="port in" title="Drop a connection here" (pointerup)="finishConnect(n.id)"></div>
-
-              <div class="head" (pointerdown)="startDrag($event, n)">
-                <span class="node-icon" aria-hidden="true">
-                  <span class="step" [title]="'Step ' + orderOf(n.id)">{{ orderOf(n.id) }}</span>
-                </span>
-
-                <span class="title">
-                  <b>{{ n.action.name }}</b>
-                  <small>{{ n.pkg.name }}</small>
-                </span>
-
-                <span class="node-menu" aria-hidden="true" (pointerdown)="$event.stopPropagation()">⋯</span>
-              </div>
-
-              <div class="port out" title="Drag to another node" (pointerdown)="startConnect($event, n)">+</div>
-            </div>
-          }
-
-          @if (!nodes().length && !loading()) {
-            <div class="empty">
-              <div class="empty-icon" aria-hidden="true">✦</div>
-              <h3>Start building your workflow</h3>
-              <p>Expand a package, then drag an action onto the canvas, or double-click it to add it.</p>
-              <p class="empty-tip">
-                Drag from a node's bottom port to another node's top port to set the execution order.
-                Click a connection line to remove it.
-              </p>
-            </div>
-          }
+    <!-- Workflow canvas -->
+    <main class="canvas-panel">
+      <div class="canvas-toolbar">
+        <div class="canvas-title">
+          <h2>{{ flowName() || 'Untitled workflow' }}</h2>
+          <span class="node-count">{{ nodes().length }} action{{ nodes().length === 1 ? '' : 's' }}</span>
+        </div>
+        <div class="canvas-tools">
+          <button type="button" class="icon-button" title="Zoom out" (click)="zoomOut()">−</button>
+          <span class="zoom-level">{{ zoomPercent() }}%</span>
+          <button type="button" class="icon-button" title="Zoom in" (click)="zoomIn()">+</button>
+          <button type="button" class="btn btn-light btn-small" (click)="fit()">Reset zoom</button>
         </div>
       </div>
 
-      <div class="zoom-controls">
-        <button type="button" aria-label="Zoom in" (click)="zoomIn()">+</button>
-        <button type="button" aria-label="Zoom out" (click)="zoomOut()">−</button>
-        <button type="button" aria-label="Fit to screen" (click)="fit()">⛶</button>
+      <div class="canvas-scroll">
+        <div
+          #surface
+          class="workflow-surface"
+          [style.transform]="'scale(' + zoom() + ')'"
+          [style.transform-origin]="'top left'"
+          (dragover)="$event.preventDefault()"
+          (drop)="onDrop($event)"
+        >
+          <div class="canvas-instructions">
+            <span class="instruction-icon">↳</span>
+            <span>Drop actions here. For conditional or error-handling steps, drop actions directly into their branch areas.</span>
+          </div>
+
+          <!-- Recursive node template: child actions render inside the Core parent branch. -->
+          <ng-template #nodeCard let-node>
+            <article class="node-card" [class.node-selected]="selectedId() === node.id" [class.control-node]="isTryCatch(node) || isIf(node)">
+              <div class="node-card-header">
+                <button type="button" class="node-main-button" (click)="select(node.id)">
+                  <span class="node-icon" [style.background]="accentOf(node.pkg.id)">{{ node.pkg.name.slice(0, 1).toUpperCase() }}</span>
+                  <span class="node-title-block">
+                    <strong>{{ node.action.name }}</strong>
+                    <small>{{ node.pkg.name }}</small>
+                  </span>
+                </button>
+                <span class="node-type-tag" [class.control-tag]="isTryCatch(node) || isIf(node)">
+                  {{ isTryCatch(node) ? 'TRY / CATCH' : isIf(node) ? 'CONDITION' : 'ACTION' }}
+                </span>
+                <button type="button" class="node-more" title="Select action" (click)="select(node.id)">⋯</button>
+              </div>
+
+              @if (isIf(node)) {
+                <div class="condition-summary">
+                  <span class="summary-label">IF</span>
+                  <code>{{ node.condition?.Left || 'left value' }}</code>
+                  <span>{{ node.condition?.Operator || 'equal' }}</span>
+                  <code>{{ node.condition?.Right ?? 'right value' }}</code>
+                </div>
+              }
+
+              @if (isTryCatch(node)) {
+                <div class="branch-stack">
+                  <section class="branch branch-body" (dragover)="$event.preventDefault()" (drop)="dropIntoBranch($event, node.id, 'Body')">
+                    <div class="branch-heading">
+                      <span class="branch-marker body-marker">▶</span>
+                      <strong>Body</strong>
+                      <span class="branch-count">{{ childrenOf(node.id, 'Body').length }}</span>
+                    </div>
+                    <div class="branch-children" [class.branch-empty]="childrenOf(node.id, 'Body').length === 0">
+                      @for (child of childrenOf(node.id, 'Body'); track child.id) {
+                        <ng-container [ngTemplateOutlet]="nodeCard" [ngTemplateOutletContext]="{ $implicit: child }"></ng-container>
+                      } @empty {
+                        <p class="drop-hint">Drop actions here to run them inside TryCatch.</p>
+                      }
+                    </div>
+                  </section>
+
+                  <section class="branch branch-catch" (dragover)="$event.preventDefault()" (drop)="dropIntoBranch($event, node.id, 'Catch')">
+                    <div class="branch-heading">
+                      <span class="branch-marker catch-marker">!</span>
+                      <strong>Catch</strong>
+                      <span class="branch-count">{{ childrenOf(node.id, 'Catch').length }}</span>
+                    </div>
+                    <div class="branch-children" [class.branch-empty]="childrenOf(node.id, 'Catch').length === 0">
+                      @for (child of childrenOf(node.id, 'Catch'); track child.id) {
+                        <ng-container [ngTemplateOutlet]="nodeCard" [ngTemplateOutletContext]="{ $implicit: child }"></ng-container>
+                      } @empty {
+                        <p class="drop-hint">Drop error-handling actions here.</p>
+                      }
+                    </div>
+                  </section>
+                </div>
+              }
+
+              @if (isIf(node)) {
+                <div class="branch-grid">
+                  <section class="branch branch-then" (dragover)="$event.preventDefault()" (drop)="dropIntoBranch($event, node.id, 'Then')">
+                    <div class="branch-heading">
+                      <span class="branch-marker then-marker">✓</span>
+                      <strong>Then</strong>
+                      <span class="branch-count">{{ childrenOf(node.id, 'Then').length }}</span>
+                    </div>
+                    <div class="branch-children" [class.branch-empty]="childrenOf(node.id, 'Then').length === 0">
+                      @for (child of childrenOf(node.id, 'Then'); track child.id) {
+                        <ng-container [ngTemplateOutlet]="nodeCard" [ngTemplateOutletContext]="{ $implicit: child }"></ng-container>
+                      } @empty {
+                        <p class="drop-hint">Drop actions for a true condition.</p>
+                      }
+                    </div>
+                  </section>
+
+                  <section class="branch branch-else" (dragover)="$event.preventDefault()" (drop)="dropIntoBranch($event, node.id, 'Else')">
+                    <div class="branch-heading">
+                      <span class="branch-marker else-marker">↪</span>
+                      <strong>Else</strong>
+                      <span class="branch-count">{{ childrenOf(node.id, 'Else').length }}</span>
+                    </div>
+                    <div class="branch-children" [class.branch-empty]="childrenOf(node.id, 'Else').length === 0">
+                      @for (child of childrenOf(node.id, 'Else'); track child.id) {
+                        <ng-container [ngTemplateOutlet]="nodeCard" [ngTemplateOutletContext]="{ $implicit: child }"></ng-container>
+                      } @empty {
+                        <p class="drop-hint">Drop actions for a false condition.</p>
+                      }
+                    </div>
+                  </section>
+                </div>
+              }
+            </article>
+          </ng-template>
+
+          <div class="root-flow">
+            @for (node of rootNodes(); track node.id) {
+              <ng-container [ngTemplateOutlet]="nodeCard" [ngTemplateOutletContext]="{ $implicit: node }"></ng-container>
+            } @empty {
+              <div class="canvas-empty-state">
+                <div class="empty-state-icon">＋</div>
+                <h3>Start building your workflow</h3>
+                <p>Drag an action from the library into this area, or use the + button beside an action.</p>
+              </div>
+            }
+          </div>
+        </div>
       </div>
 
-      <div class="canvas-stats">
-        <span>{{ nodes().length }} actions</span>
-        <span>{{ connections().length }} connections</span>
-        <span>{{ variables().length }} variables</span>
-      </div>
+      <footer class="canvas-footer">
+        <span><span class="status-dot"></span> {{ nodes().length ? 'Workflow ready to configure' : 'Waiting for the first action' }}</span>
+        <span>Nested actions are saved under their parent action.</span>
+      </footer>
     </main>
 
-    <!-- RIGHT: configuration panel -->
-    @if (panelOpen()) {
-      <aside class="side properties-panel">
-
-        <div class="panel-top">
-          <span class="panel-logo" aria-hidden="true">✦</span>
-          <strong>Configuration</strong>
-          <span class="badge">LIVE</span>
-          <button type="button" class="icon-btn" aria-label="Close panel" (click)="panelOpen.set(false)">✕</button>
+    <!-- Properties, variables and JSON -->
+    <aside class="details-panel" [class.panel-collapsed]="!panelOpen()">
+      <div class="panel-heading details-heading">
+        <div>
+          <h2>Configuration</h2>
+          <p>Configure action properties and variables.</p>
         </div>
+        <button type="button" class="icon-button" [attr.aria-label]="panelOpen() ? 'Collapse configuration panel' : 'Expand configuration panel'" (click)="panelOpen.set(!panelOpen())">
+          {{ panelOpen() ? '›' : '‹' }}
+        </button>
+      </div>
 
-        <div class="tabs" role="tablist">
-          <button type="button" role="tab" [class.on]="tab() === 'props'"
-                  [attr.aria-selected]="tab() === 'props'" (click)="tab.set('props')">Properties</button>
+      @if (panelOpen()) {
+        <nav class="details-tabs" aria-label="Configuration tabs">
+          <button type="button" [class.active-tab]="tab() === 'props'" (click)="tab.set('props')">Properties</button>
+          <button type="button" [class.active-tab]="tab() === 'vars'" (click)="tab.set('vars')">Variables <span>{{ variables().length }}</span></button>
+          <button type="button" [class.active-tab]="tab() === 'json'" (click)="tab.set('json')">JSON</button>
+        </nav>
 
-          <button type="button" role="tab" [class.on]="tab() === 'vars'"
-                  [attr.aria-selected]="tab() === 'vars'" (click)="tab.set('vars')">Variables ({{ variables().length }})</button>
-
-          <button type="button" role="tab" [class.on]="tab() === 'json'"
-                  [attr.aria-selected]="tab() === 'json'" (click)="tab.set('json')">Workflow JSON</button>
-        </div>
-
-        <div class="configuration-content">
-
-          @if (tab() === 'props') {
-
-            <section class="card">
-              <h4 class="card-title">Workflow settings</h4>
-
-              <label class="form-label">
-                Flow name
-                <input [ngModel]="flowName()" (ngModelChange)="flowName.set($event)" placeholder="Enter workflow name" />
-              </label>
-
-              <label class="form-label">
-                Version
-                <input [ngModel]="flowVersion()" (ngModelChange)="flowVersion.set($event)" placeholder="1.0.0" />
-              </label>
-            </section>
-
-            @if (selected(); as n) {
-
-              <section class="card selected-action" [style.--accent]="accentOf(n.pkg.id)">
-                <div class="selected-action-heading">
-                  <div class="selected-action-icon" aria-hidden="true">✧</div>
-                  <div>
-                    <h4>{{ n.action.name }}</h4>
-                    <small>{{ n.pkg.name }}</small>
-                  </div>
-                </div>
-
-                <h5 class="section-title">Inputs</h5>
-
-                @for (k of keys(n.action.inputs); track k) {
-                  @let b = n.inputs[k];
-                  @let inId = 'dl-in-' + n.id + '-' + k;
-
-                  <div class="field">
-                    <div class="flabel">
-                      <span>{{ k }}</span>
-                      <small>{{ mapType(n.action.inputs[k]) }}</small>
-                    </div>
-
-                    <div class="inline">
-                      <select [ngModel]="b.mode" (ngModelChange)="set(b, 'mode', $event)">
-                        <option value="literal">Value</option>
-                        <option value="variable">Variable</option>
-                      </select>
-
-                      @if (b.mode === 'literal' && mapType(n.action.inputs[k]) === 'BOOLEAN') {
-                        <select [ngModel]="b.value" (ngModelChange)="set(b, 'value', $event)">
-                          <option value="true">true</option>
-                          <option value="false">false</option>
-                        </select>
-                      } @else {
-                        <input
-                          [placeholder]="b.mode === 'variable' ? 'Variable name' : 'Enter value'"
-                          [attr.list]="b.mode === 'variable' ? inId : null"
-                          autocomplete="off"
-                          [ngModel]="b.value"
-                          (ngModelChange)="set(b, 'value', $event)" />
-
-                        @if (b.mode === 'variable') {
-                          <datalist [id]="inId">
-                            @for (s of suggestionsFor(n.action.inputs[k]); track s.name) {
-                              <option [value]="s.name"
-                                      [attr.label]="s.type + (s.source === 'output' ? ' · output' : '')"></option>
-                            }
-                          </datalist>
-                        }
-                      }
-                    </div>
-
-                    @if (b.mode === 'variable' && b.value.trim() && !isDeclared(b.value)) {
-                      <input
-                        class="sub"
-                        placeholder="Initial value of variable"
-                        [ngModel]="b.varValue"
-                        (ngModelChange)="set(b, 'varValue', $event)" />
-                    }
-                  </div>
-                }
-
-                <h5 class="section-title">Outputs to variables</h5>
-
-                @for (k of keys(n.action.outputs); track k) {
-                  @let outId = 'dl-out-' + n.id + '-' + k;
-
-                  <div class="field">
-                    <div class="flabel">
-                      <span>{{ k }}</span>
-                      <small>{{ mapType(n.action.outputs[k]) }}</small>
-                    </div>
-
-                    <input
-                      [attr.list]="outId"
-                      autocomplete="off"
-                      [ngModel]="n.outputs[k]"
-                      (ngModelChange)="setOutput(n, k, $event)"
-                      placeholder="Output variable name" />
-
-                    <datalist [id]="outId">
-                      @for (s of suggestionsFor(n.action.outputs[k]); track s.name) {
-                        <option [value]="s.name"
-                                [attr.label]="s.type + (s.source === 'output' ? ' · output' : '')"></option>
-                      }
-                    </datalist>
-                  </div>
-                }
-
-                <button type="button" class="btn-danger" (click)="removeNode(n.id)">Delete action</button>
-              </section>
-
-            } @else {
-              <section class="card welcome">
-                <div class="welcome-art" aria-hidden="true">
-                  <span class="art-line l1"></span>
-                  <span class="art-line l2"></span>
-                  <span class="art-bubble">⋯</span>
-                </div>
-                <h4>No action selected</h4>
-                <p>Select a node on the canvas to configure its inputs and outputs.</p>
-                <small>Click a connection line to remove it.</small>
-              </section>
-            }
-
-          } @else if (tab() === 'vars') {
-
-            <section class="card">
-              <h4 class="card-title">Create variable</h4>
-
-              <label class="form-label">
-                Name
-                <input
-                  placeholder="e.g. filePath"
-                  [ngModel]="newVarName()"
-                  (ngModelChange)="newVarName.set($event); varError.set('')"
-                  (keydown.enter)="addVariable()" />
-              </label>
-
-              <div class="inline">
-                <label class="form-label">
-                  Type
-                  <select [ngModel]="newVarType()" (ngModelChange)="onNewVarTypeChange($event)">
-                    @for (t of VAR_TYPES; track t) {
-                      <option [value]="t">{{ t }}</option>
-                    }
-                  </select>
-                </label>
-
-                <label class="form-label">
-                  Initial value
-                  @if (newVarType() === 'BOOLEAN') {
-                    <select [ngModel]="newVarValue()" (ngModelChange)="newVarValue.set($event)">
-                      <option value="true">true</option>
-                      <option value="false">false</option>
-                    </select>
-                  } @else {
-                    <input
-                      [type]="newVarType() === 'NUMBER' ? 'number' : 'text'"
-                      [ngModel]="newVarValue()"
-                      (ngModelChange)="newVarValue.set($event)"
-                      (keydown.enter)="addVariable()" />
-                  }
-                </label>
-              </div>
-
-              @if (varError()) {
-                <p class="err" role="alert">{{ varError() }}</p>
-              }
-
-              <button type="button" class="btn-primary" (click)="addVariable()">Add variable</button>
-            </section>
-
-            <section class="card">
-              <h4 class="card-title">Variables ({{ variables().length }})</h4>
-
-              @if (!variables().length) {
-                <p class="hint">
-                  No variables yet. Created variables are added to the workflow JSON
-                  and suggested in action inputs and outputs.
-                </p>
-              }
-
-              @for (v of variables(); track v.name) {
-                <div class="var-row">
-                  <div class="var-head">
-                    <b>{{ v.name }}</b>
-                    <button type="button" class="icon-btn" [attr.aria-label]="'Delete ' + v.name"
-                            (click)="removeVariable(v.name)">✕</button>
-                  </div>
-
-                  <div class="inline">
-                    <select [ngModel]="v.type" (ngModelChange)="updateVariable(v.name, 'type', $event)">
-                      @for (t of VAR_TYPES; track t) {
-                        <option [value]="t">{{ t }}</option>
-                      }
-                    </select>
-
-                    @if (v.type === 'BOOLEAN') {
-                      <select [ngModel]="v.value" (ngModelChange)="updateVariable(v.name, 'value', $event)">
-                        <option value="true">true</option>
-                        <option value="false">false</option>
-                      </select>
-                    } @else {
-                      <input
-                        [type]="v.type === 'NUMBER' ? 'number' : 'text'"
-                        [ngModel]="v.value"
-                        (ngModelChange)="updateVariable(v.name, 'value', $event)"
-                        placeholder="Initial value" />
-                    }
-                  </div>
-                </div>
-              }
-            </section>
-
-          } @else {
-
-            <section class="card json-section">
-              <div class="json-heading">
+        @if (tab() === 'props') {
+          @if (selected(); as node) {
+            <div class="properties-content">
+              <div class="selected-action-summary">
+                <span class="node-icon large-node-icon" [style.background]="accentOf(node.pkg.id)">{{ node.pkg.name.slice(0, 1).toUpperCase() }}</span>
                 <div>
-                  <h4>Workflow JSON</h4>
-                  <p>Generated workflow definition</p>
+                  <h3>{{ node.action.name }}</h3>
+                  <p>{{ node.pkg.name }} · {{ node.action.outputs ? keys(node.action.outputs).length : 0 }} output(s)</p>
                 </div>
-
-                <button type="button" class="btn-primary" (click)="copy()">
-                  {{ copied() ? '✓ Copied' : 'Copy JSON' }}
-                </button>
+                <button type="button" class="danger-icon-button" title="Delete action" aria-label="Delete selected action" (click)="removeNode(node.id)">×</button>
               </div>
 
-              <pre class="json">{{ json() }}</pre>
-            </section>
+              @if (keys(node.inputs).length) {
+                <section class="property-section">
+                  <div class="section-title-row"><h4>Inputs</h4><span>{{ keys(node.inputs).length }}</span></div>
+                  @for (key of keys(node.inputs); track key) {
+                    @if (node.inputs[key]; as binding) {
+                      <div class="property-field">
+                        <label>{{ key }} <small>{{ node.action.inputs[key] || 'STRING' }}</small></label>
+                        <select [ngModel]="binding.mode" (ngModelChange)="set(binding, 'mode', $event)" [name]="'mode_' + node.id + '_' + key">
+                          <option value="literal">Literal value</option>
+                          <option value="variable">Variable</option>
+                        </select>
+                        @if (binding.mode === 'variable') {
+                          <input
+                            type="text"
+                            [ngModel]="binding.value"
+                            (ngModelChange)="set(binding, 'value', $event)"
+                            [name]="'input_var_' + node.id + '_' + key"
+                            placeholder="Variable name, e.g. age"
+                          />
+                          <input
+                            type="text"
+                            [ngModel]="binding.varValue"
+                            (ngModelChange)="set(binding, 'varValue', $event)"
+                            [name]="'input_initial_' + node.id + '_' + key"
+                            placeholder="Initial value if undeclared"
+                          />
+                          <p class="field-hint">The generated JSON uses a reference such as {{ '{' + '{' }}age{{ '}' + '}' }}.</p>
+                        } @else {
+                          <input
+                            type="text"
+                            [ngModel]="binding.value"
+                            (ngModelChange)="set(binding, 'value', $event)"
+                            [name]="'input_literal_' + node.id + '_' + key"
+                            [placeholder]="'Enter ' + key"
+                          />
+                        }
+                      </div>
+                    }
+                  }
+                </section>
+              } @else {
+                <div class="no-properties">This action has no configurable inputs.</div>
+              }
 
+              @if (keys(node.outputs).length) {
+                <section class="property-section">
+                  <div class="section-title-row"><h4>Outputs</h4><span>{{ keys(node.outputs).length }}</span></div>
+                  @for (key of keys(node.outputs); track key) {
+                    <div class="property-field">
+                      <label>{{ key }} <small>{{ node.action.outputs[key] || 'STRING' }}</small></label>
+                      <div class="output-binding">
+                        <span class="output-prefix">{{ '{' + '{' }}</span>
+                        <input
+                          type="text"
+                          [ngModel]="node.outputs[key]"
+                          (ngModelChange)="setOutput(node, key, $event)"
+                          [name]="'output_' + node.id + '_' + key"
+                          placeholder="outputVariable"
+                        />
+                        <span class="output-suffix">{{ '}' + '}' }}</span>
+                      </div>
+                    </div>
+                  }
+                </section>
+              }
+
+              @if (isIf(node)) {
+                <section class="property-section condition-editor">
+                  <div class="section-title-row"><h4>Condition</h4><span>IF</span></div>
+                  <div class="property-field">
+                    <label>Left value</label>
+                    <input type="text" [ngModel]="node.condition?.Left ?? ''" (ngModelChange)="setCondition(node.id, 'Left', $event)" [name]="'condition_left_' + node.id" placeholder="{{ '{' + '{' }}age{{ '}' + '}' }}" />
+                  </div>
+                  <div class="property-field">
+                    <label>Operator</label>
+                    <select [ngModel]="node.condition?.Operator ?? 'equal'" (ngModelChange)="setCondition(node.id, 'Operator', $event)" [name]="'condition_operator_' + node.id">
+                      <option value="equal">Equal</option>
+                      <option value="notEqual">Not equal</option>
+                      <option value="greaterThan">Greater than</option>
+                      <option value="greaterOrEqual">Greater than or equal</option>
+                      <option value="lessThan">Less than</option>
+                      <option value="lessOrEqual">Less than or equal</option>
+                      <option value="contains">Contains</option>
+                      <option value="startsWith">Starts with</option>
+                      <option value="endsWith">Ends with</option>
+                      <option value="isEmpty">Is empty</option>
+                      <option value="isNotEmpty">Is not empty</option>
+                    </select>
+                  </div>
+                  <div class="property-field">
+                    <label>Right value</label>
+                    <input type="text" [ngModel]="node.condition?.Right ?? ''" (ngModelChange)="setCondition(node.id, 'Right', parseConditionValue($event))" [name]="'condition_right_' + node.id" placeholder="18" />
+                    <p class="field-hint">Numeric values are saved as numbers. Enter {{ '{' + '{' }}variableName{{ '}' + '}' }} to compare against a variable.</p>
+                  </div>
+                </section>
+              }
+
+              @if (node.parentId != null) {
+                <div class="nested-info">
+                  <strong>Nested action</strong>
+                  <p>This action is inside the {{ node.branch }} branch of {{ parentActionName(node.parentId) }}. Drag it to another branch to change its placement.</p>
+                </div>
+              }
+            </div>
+          } @else {
+            <div class="empty-details">
+              <div class="empty-state-icon">⚙</div>
+              <h3>No action selected</h3>
+              <p>Select an action on the canvas to edit its input, output and condition properties.</p>
+            </div>
           }
-        </div>
+        }
 
-        <div class="properties-footer">Review the generated workflow before saving it.</div>
-      </aside>
-    }
+        @if (tab() === 'vars') {
+          <div class="variables-content">
+            <div class="variables-intro">
+              <h3>Workflow variables</h3>
+              <p>Input variables are supplied when the workflow starts. Variables produced by action outputs are marked as outputs in the generated JSON.</p>
+            </div>
 
+            <form class="new-variable-form" (submit)="$event.preventDefault(); addVariable()">
+              <div class="property-field">
+                <label for="new-var-name">Variable name</label>
+                <input id="new-var-name" type="text" [ngModel]="newVarName()" (ngModelChange)="newVarName.set($event)" name="newVarName" placeholder="e.g. userName" />
+              </div>
+              <div class="form-row">
+                <div class="property-field">
+                  <label for="new-var-type">Type</label>
+                  <select id="new-var-type" [ngModel]="newVarType()" (ngModelChange)="onNewVarTypeChange($event)" name="newVarType">
+                    @for (type of VAR_TYPES; track type) { <option [value]="type">{{ type }}</option> }
+                  </select>
+                </div>
+                <div class="property-field">
+                  <label for="new-var-value">Initial value</label>
+                  <input id="new-var-value" type="text" [ngModel]="newVarValue()" (ngModelChange)="newVarValue.set($event)" name="newVarValue" placeholder="Initial value" />
+                </div>
+              </div>
+              @if (varError()) { <p class="validation-error">{{ varError() }}</p> }
+              <button type="submit" class="btn btn-primary btn-block">Add variable</button>
+            </form>
+
+            <div class="variable-list">
+              @for (variable of variables(); track variable.name) {
+                <div class="variable-card">
+                  <div class="variable-card-heading">
+                    <span class="variable-symbol">ƒ</span>
+                    <strong>{{ variable.name }}</strong>
+                    <span class="type-pill">{{ variable.type }}</span>
+                    <button type="button" class="danger-icon-button" title="Remove variable" [attr.aria-label]="'Remove ' + variable.name" (click)="removeVariable(variable.name)">×</button>
+                  </div>
+                  <div class="property-field">
+                    <label>Initial value</label>
+                    <input type="text" [ngModel]="variable.value" (ngModelChange)="updateVariable(variable.name, 'value', $event)" [name]="'variable_value_' + variable.name" />
+                  </div>
+                  <div class="property-field">
+                    <label>Type</label>
+                    <select [ngModel]="variable.type" (ngModelChange)="updateVariable(variable.name, 'type', $event)" [name]="'variable_type_' + variable.name">
+                      @for (type of VAR_TYPES; track type) { <option [value]="type">{{ type }}</option> }
+                    </select>
+                  </div>
+                </div>
+              } @empty {
+                <div class="empty-state">No user-declared variables yet.</div>
+              }
+            </div>
+          </div>
+        }
+
+        @if (tab() === 'json') {
+          <div class="json-panel">
+            <div class="json-toolbar">
+              <div><h3>Workflow JSON</h3><p>Preview of the payload sent to the backend.</p></div>
+              <button type="button" class="btn btn-light btn-small" (click)="copy()">{{ copied() ? 'Copied!' : 'Copy' }}</button>
+            </div>
+            <pre class="json-preview"><code>{{ json() }}</code></pre>
+            <p class="field-hint">Nested actions appear under Body/Catch or Then/Else according to their placement on the canvas.</p>
+          </div>
+        }
+      }
+    </aside>
   </div>
 </div>

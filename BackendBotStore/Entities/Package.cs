@@ -10,10 +10,12 @@ public class Package
 
     public string FilePath { get; set; } = string.Empty;
 
+    public string Description { get; set; } = string.Empty;
+
     // Package dependencies
     public List<string> Dependencies { get; set; } = new();
 
-    // Navigation property
+    // Package actions and their metadata
     public ICollection<PackageAction> Actions { get; set; }
         = new List<PackageAction>();
 }

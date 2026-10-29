@@ -1,16 +1,16 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { FlowBuilder } from './flow-builder';
+import { FlowBuilderComponent } from './flow-builder';
 
 describe('FlowBuilder', () => {
-  let component: FlowBuilder;
-  let fixture: ComponentFixture<FlowBuilder>;
+  let component: FlowBuilderComponent;
+  let fixture: ComponentFixture<FlowBuilderComponent>;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [FlowBuilder],
+      imports: [FlowBuilderComponent],
     }).compileComponents();
 
-    fixture = TestBed.createComponent(FlowBuilder);
+    fixture = TestBed.createComponent(FlowBuilderComponent);
     component = fixture.componentInstance;
     await fixture.whenStable();
   });

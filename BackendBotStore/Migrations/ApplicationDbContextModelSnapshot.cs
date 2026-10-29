@@ -21,6 +21,7 @@ namespace BackendBotStore.Migrations
                 .HasAnnotation("ProductVersion", "8.0.0")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
+            NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "hstore");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("BackendBotStore.Entities.Package", b =>
@@ -34,6 +35,10 @@ namespace BackendBotStore.Migrations
                     b.Property<List<string>>("Dependencies")
                         .IsRequired()
                         .HasColumnType("jsonb");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<string>("FilePath")
                         .IsRequired()
@@ -60,9 +65,32 @@ namespace BackendBotStore.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<List<string>>("Blocks")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<List<string>>("ConditionOperators")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("HasCondition")
+                        .HasColumnType("boolean");
+
                     b.Property<Dictionary<string, string>>("Inputs")
                         .IsRequired()
                         .HasColumnType("jsonb");
+
+                    b.Property<List<string>>("LogicalOperators")
+                        .IsRequired()
+                        .HasColumnType("text[]");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -74,6 +102,13 @@ namespace BackendBotStore.Migrations
 
                     b.Property<int>("PackageId")
                         .HasColumnType("integer");
+
+                    b.Property<Dictionary<string, string>>("Properties")
+                        .IsRequired()
+                        .HasColumnType("hstore");
+
+                    b.Property<bool>("SupportsMultipleConditions")
+                        .HasColumnType("boolean");
 
                     b.HasKey("Id");
 
