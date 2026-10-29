@@ -65,58 +65,92 @@ public class WorkflowsController : ControllerBase
     /// "version" defaults to "1.0.0". The same flow_name + version cannot be saved twice.
     /// </summary>
     [HttpPost("upload")]
-    [Consumes("application/json")]
-    [RequestSizeLimit(MaxBodyBytes)]
-    public async Task<IActionResult> Upload([FromBody] JsonElement body)
+[Consumes("application/json")]
+[RequestSizeLimit(MaxBodyBytes)]
+public async Task<IActionResult> Upload([FromBody] JsonElement body)
+{
+    if (!HasActions(body))
+        return BadRequest(new
+        {
+            success = false,
+            error = "Body must be a workflow JSON object with an 'Actions' object."
+        });
+
+    var name = GetString(body, "flow_name")?.Trim();
+
+    if (string.IsNullOrWhiteSpace(name))
+        return BadRequest(new
+        {
+            success = false,
+            error = "'flow_name' is required."
+        });
+
+    if (name.Length > 200)
+        return BadRequest(new
+        {
+            success = false,
+            error = "'flow_name' must be 200 characters or fewer."
+        });
+
+    var version = GetString(body, "version")?.Trim();
+
+    if (string.IsNullOrEmpty(version))
+        version = "1.0.0";
+
+    if (version.Length > 50)
+        return BadRequest(new
+        {
+            success = false,
+            error = "'version' must be 50 characters or fewer."
+        });
+
+    // Check whether the workflow already exists.
+    var workflow = await _db.Workflows
+        .FirstOrDefaultAsync(w => w.Name == name && w.Version == version);
+
+    if (workflow != null)
     {
-        if (!HasActions(body))
-            return BadRequest(new { success = false, error = "Body must be a workflow JSON object with an 'Actions' object." });
+        // Update the existing workflow JSON.
+        workflow.WorkflowJson = body.GetRawText();
 
-        var name = GetString(body, "flow_name")?.Trim();
-        if (string.IsNullOrWhiteSpace(name))
-            return BadRequest(new { success = false, error = "'flow_name' is required." });
-        if (name.Length > 200)
-            return BadRequest(new { success = false, error = "'flow_name' must be 200 characters or fewer." });
+        await _db.SaveChangesAsync();
 
-        var version = GetString(body, "version")?.Trim();
-        if (string.IsNullOrEmpty(version))
-            version = "1.0.0";
-        if (version.Length > 50)
-            return BadRequest(new { success = false, error = "'version' must be 50 characters or fewer." });
-
-        if (await _db.Workflows.AnyAsync(w => w.Name == name && w.Version == version))
-            return Conflict(new { success = false, error = $"Workflow '{name}' version '{version}' already exists." });
-
-        var workflow = new Workflow
+        return Ok(new
         {
-            Name = name,
-            Version = version,
-            WorkflowJson = body.GetRawText()
-            // CreatedAt = UtcNow and CreatedBy = "Admin" come from the entity defaults
-        };
-
-        _db.Workflows.Add(workflow);
-
-        try
-        {
-            await _db.SaveChangesAsync();
-        }
-        catch (DbUpdateException)
-        {
-            // Another request saved the same name + version between the check and the insert.
-            return Conflict(new { success = false, error = $"Workflow '{name}' version '{version}' already exists." });
-        }
-
-        return CreatedAtAction(nameof(GetById), new { id = workflow.Id }, new
-        {
+            success = true,
+            message = "Workflow updated successfully.",
             workflow.Id,
             workflow.Name,
             workflow.Version,
+            workflow.WorkflowJson,
             workflow.CreatedAt,
             workflow.CreatedBy
         });
     }
 
+    // Create a new workflow if it does not exist.
+    workflow = new Workflow
+    {
+        Name = name,
+        Version = version,
+        WorkflowJson = body.GetRawText()
+    };
+
+    _db.Workflows.Add(workflow);
+
+    await _db.SaveChangesAsync();
+
+    return CreatedAtAction(nameof(GetById), new { id = workflow.Id }, new
+    {
+        success = true,
+        message = "Workflow created successfully.",
+        workflow.Id,
+        workflow.Name,
+        workflow.Version,
+        workflow.CreatedAt,
+        workflow.CreatedBy
+    });
+}
     // ── helpers ──────────────────────────────────────────────
 
     private static bool HasActions(JsonElement root)

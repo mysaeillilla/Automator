@@ -9,7 +9,7 @@ import {
   untracked,
 } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { debounceTime, distinctUntilChanged, map, Subscription } from 'rxjs';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 
@@ -44,7 +44,7 @@ export class MyFlows implements OnDestroy {
   private readonly http = inject(HttpClient);
 
   private subscription?: Subscription;
-
+private router = inject(Router);
   readonly searchText = signal('');
   readonly latestOnly = signal(false);
 
@@ -172,6 +172,8 @@ export class MyFlows implements OnDestroy {
     // Dummy edit function. Replace with editor navigation later.
     console.log('Edit workflow:', flow);
     alert(`Edit Flow clicked for "${flow.name}" (ID: ${flow.id}).`);
+
+    this.router.navigate(['/myflows', flow.id]);
   }
 
   private toMessage(err: HttpErrorResponse): string {

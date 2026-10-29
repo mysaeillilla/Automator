@@ -11,6 +11,7 @@ export const routes: Routes = [
   { path: 'history', component: Activity },
   { path: 'myflows', component: MyFlows },
   { path: 'createflow', component: FlowBuilderComponent },
+  { path: 'myflows/:id', component: FlowBuilderComponent },
 
 {
   path: 'my-flows/:id',

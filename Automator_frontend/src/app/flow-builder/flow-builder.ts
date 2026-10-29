@@ -1,6 +1,9 @@
-import { Component, ElementRef, HostListener, OnInit, computed, inject, signal, viewChild } from '@angular/core';
+import { Component, DestroyRef, ElementRef, HostListener, computed, inject, signal, viewChild, OnInit } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
+import { ActivatedRoute } from '@angular/router';
+import { catchError, forkJoin, map, of, switchMap, tap } from 'rxjs';
 import { environment } from '../../environments/environment.development';
 
 // Tip: use a dev proxy (proxy.conf.json: "/api" -> https://localhost:5000, secure:false)
@@ -8,7 +11,8 @@ import { environment } from '../../environments/environment.development';
 
 const baseUrl = `${environment.apiUrl}`;
 const API_URL = `${baseUrl}/api/Packages`;
-const WORKFLOW_UPLOAD_URL = `${baseUrl}/api/Workflows/upload`;
+const WORKFLOWS_URL = `${baseUrl}/api/Workflows`;           // NEW: GET {WORKFLOWS_URL}/{id}
+const WORKFLOW_UPLOAD_URL = `${WORKFLOWS_URL}/upload`;
 
 // ───────────────────────────── Models ─────────────────────────────
 export interface PackageAction {
@@ -65,6 +69,31 @@ export interface VarSuggestion {
   name: string;
   type: string;
   source: 'declared' | 'output';
+}
+
+// NEW: shape returned by GET /api/Workflows/{id}
+export interface WorkflowStep {
+  ClassName: string;
+  FunctionName: string;
+  Inputs?: Record<string, unknown>;
+  outputs?: Record<string, string>;
+}
+
+export interface WorkflowDefinition {
+  flow_name: string;
+  version: string;
+  packages?: Record<string, string>;
+  variables?: Record<string, { value: unknown; type: string; input: boolean; output: boolean }>;
+  Actions?: Record<string, WorkflowStep>;
+}
+
+export interface WorkflowRecord {
+  id: number;
+  name: string;
+  version: string;
+  createdAt: string;
+  createdBy: string;
+  workflow: WorkflowDefinition;
 }
 
 // ───────────────────────── Workflow generator ─────────────────────────
@@ -214,10 +243,12 @@ export function generateWorkflow(
 })
 export class FlowBuilderComponent implements OnInit {
   private http = inject(HttpClient);
+  private route = inject(ActivatedRoute);          // NEW
+  private destroyRef = inject(DestroyRef);         // NEW
   private surface = viewChild.required<ElementRef<HTMLElement>>('surface');
 
   readonly NODE_W = 220;
-  readonly PORT_Y = 22;
+  readonly NODE_H = 72;                            // NEW: must match the card height in the template
   readonly mapType = mapType;
   readonly VAR_TYPES: VarType[] = ['STRING', 'NUMBER', 'BOOLEAN'];
 
@@ -228,6 +259,7 @@ export class FlowBuilderComponent implements OnInit {
   libraryOpen = signal(true);
   panelOpen = signal(true);
   zoom = signal(1);
+  workflowId = signal<number | null>(null);        // NEW
 
   zoomIn() { this.zoom.update(z => Math.min(2, +(z + 0.1).toFixed(2))); }
   zoomOut() { this.zoom.update(z => Math.max(0.4, +(z - 0.1).toFixed(2))); }
@@ -358,11 +390,132 @@ export class FlowBuilderComponent implements OnInit {
   private seq = 1;
   private dragging: { n: FlowNode; dx: number; dy: number } | null = null;
 
+  // ───────── NEW: load packages (+ workflow when the route has :id) ─────────
   ngOnInit() {
-    this.http.get<BotPackage[]>(API_URL).subscribe({
-      next: p => { this.packages.set(p); this.loading.set(false); },
-      error: e => { this.error.set('Could not load packages: ' + (e.message ?? e.statusText)); this.loading.set(false); },
+    this.route.paramMap.pipe(
+      map(p => Number(p.get('id')) || null),
+      tap(id => {
+        this.workflowId.set(id);
+        this.loading.set(true);
+        this.error.set('');
+        this.submitMessage.set('');
+      }),
+      switchMap(id => forkJoin({
+        packages: this.http.get<BotPackage[]>(API_URL),
+        record: id === null
+          ? of(null)
+          : this.http.get<WorkflowRecord>(`${WORKFLOWS_URL}/${id}`).pipe(
+              catchError(e => {
+                this.error.set(e.status === 404
+                  ? `Workflow ${id} was not found.`
+                  : 'Could not load workflow: ' + (e.message ?? e.statusText));
+                return of(null);
+              }),
+            ),
+      })),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe({
+      next: ({ packages, record }) => {
+        this.packages.set(packages);       // packages must be set first: loadWorkflow resolves against them
+        if (record) this.loadWorkflow(record);
+        else this.resetCanvas();
+        this.loading.set(false);
+      },
+      error: e => {
+        this.error.set('Could not load packages: ' + (e.message ?? e.statusText));
+        this.loading.set(false);
+      },
     });
+  }
+
+  private resetCanvas() {
+    this.nodes.set([]);
+    this.connections.set([]);
+    this.variables.set([]);
+    this.selectedId.set(null);
+    this.seq = 1;
+  }
+
+  private findPackage(className: string): BotPackage | undefined {
+    return this.packages().find(p =>
+      p.className === className ||
+      CLASS_NAMES[p.name] === className ||
+      p.name.replace(/\s+/g, '') === className,
+    );
+  }
+
+  /** "{{name}}" -> "name"; anything else -> null (it is a literal). */
+  private unwrapVar(v: unknown): string | null {
+    const m = /^\{\{\s*(.+?)\s*\}\}$/.exec(typeof v === 'string' ? v : '');
+    return m ? m[1] : null;
+  }
+
+  /** Rebuild the canvas from a saved workflow record. */
+  private loadWorkflow(rec: WorkflowRecord) {
+    const wf = rec.workflow;
+    this.resetCanvas();
+    this.flowName.set(wf.flow_name ?? rec.name);
+    this.flowVersion.set(wf.version ?? rec.version);
+
+    const steps = Object.entries(wf.Actions ?? {}).sort(([a], [b]) => Number(a) - Number(b));
+    const nodes: FlowNode[] = [];
+    const missing: string[] = [];
+
+    for (const [, step] of steps) {
+      const pkg = this.findPackage(step.ClassName);
+      const action = pkg?.actions.find(a => a.name === step.FunctionName);
+      if (!pkg || !action) { missing.push(`${step.ClassName}.${step.FunctionName}`); continue; }
+
+      const id = this.seq++;
+
+      const inputs: Record<string, Binding> = {};
+      this.keys(action.inputs).forEach(k => {
+        const raw = step.Inputs?.[k];
+        const ref = this.unwrapVar(raw);
+        inputs[k] = ref !== null
+          ? { mode: 'variable', value: ref, varValue: '' }
+          : {
+              mode: 'literal',
+              value: raw === undefined || raw === null
+                ? defaultLiteral(action.inputs[k])
+                : typeof raw === 'object' ? JSON.stringify(raw) : String(raw),
+              varValue: '',
+            };
+      });
+
+      const outputs: Record<string, string> = {};
+      this.keys(action.outputs).forEach(k => {
+        outputs[k] = this.unwrapVar(step.outputs?.[k]) ?? `${action.name}_${k}_${id}`;
+      });
+
+      // Saved JSON has no coordinates: stack the steps vertically, like Power Automate.
+      nodes.push({ id, x: 160, y: 60 + nodes.length * 120, pkg, action, inputs, outputs });
+    }
+
+    // Saved JSON has no edges either: execution order = step order.
+    const conns: Connection[] = nodes.slice(1).map((n, i) => ({ id: this.seq++, from: nodes[i].id, to: n.id }));
+
+    // Variables not produced by an action output are user-declared (Variables pane).
+    const produced = new Set(nodes.flatMap(n => Object.values(n.outputs).map(varName)));
+    const declared: FlowVariable[] = Object.entries(wf.variables ?? {})
+      .filter(([name]) => !produced.has(name))
+      .map(([name, v]) => {
+        const t = mapType(String(v.type)) as VarType;
+        return {
+          name,
+          type: this.VAR_TYPES.includes(t) ? t : 'STRING',
+          value: v.value === null || v.value === undefined ? '' : String(v.value),
+        };
+      });
+
+    this.nodes.set(nodes);
+    this.connections.set(conns);
+    this.variables.set(declared);
+
+    if (missing.length) {
+      this.submitSuccess.set(false);
+      this.submitMessage.set(`Skipped actions not found in the package library: ${missing.join(', ')}`);
+    }
   }
 
   keys = (o: object) => Object.keys(o);
@@ -395,6 +548,9 @@ export class FlowBuilderComponent implements OnInit {
     this.submitting.set(true);
     this.submitMessage.set('');
 
+    // NOTE: an opened workflow still saves through /upload, which returns 409 for an
+    // existing name + version. Bump the version, or add a PUT /api/Workflows/{id}
+    // endpoint and call it here when workflowId() is set.
     this.http.post(WORKFLOW_UPLOAD_URL, workflow).subscribe({
       next: (response: any) => {
         this.submitSuccess.set(true);
@@ -427,7 +583,7 @@ export class FlowBuilderComponent implements OnInit {
     const action = pkg?.actions.find(a => a.id === aid);
     if (!pkg || !action) return;
     const p = this.toSurface(e);
-    this.addNode(pkg, action, p.x - this.NODE_W / 2, p.y - 20);
+    this.addNode(pkg, action, p.x - this.NODE_W / 2, p.y - this.NODE_H / 2);
   }
 
   addNode(pkg: BotPackage, action: PackageAction, x: number, y: number) {
@@ -501,22 +657,26 @@ export class FlowBuilderComponent implements OnInit {
     if (id !== null) this.removeNode(id);
   }
 
-  // ---- wires
+  // ---- wires (CHANGED: vertical, bottom port -> top port, like the Power Automate designer)
   path(c: Connection) {
     const a = this.nodes().find(n => n.id === c.from), b = this.nodes().find(n => n.id === c.to);
-    return a && b ? this.curve(a.x + this.NODE_W, a.y + this.PORT_Y, b.x, b.y + this.PORT_Y) : '';
+    return a && b
+      ? this.curve(a.x + this.NODE_W / 2, a.y + this.NODE_H, b.x + this.NODE_W / 2, b.y)
+      : '';
   }
   pendingPath() {
     const p = this.pending(); const a = p && this.nodes().find(n => n.id === p.from);
-    return p && a ? this.curve(a.x + this.NODE_W, a.y + this.PORT_Y, p.x, p.y) : '';
+    return p && a ? this.curve(a.x + this.NODE_W / 2, a.y + this.NODE_H, p.x, p.y) : '';
   }
   private curve(x1: number, y1: number, x2: number, y2: number) {
-    const dx = Math.max(40, Math.abs(x2 - x1) / 2);
-    return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
+    const dy = Math.max(30, Math.abs(y2 - y1) / 2);
+    return `M${x1},${y1} C${x1},${y1 + dy} ${x2},${y2 - dy} ${x2},${y2}`;
   }
+  // CHANGED: divide by zoom so drops / drags stay accurate when the surface is scaled
   private toSurface(e: { clientX: number; clientY: number }) {
     const r = this.surface().nativeElement.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
+    const z = this.zoom();
+    return { x: (e.clientX - r.left) / z, y: (e.clientY - r.top) / z };
   }
 
   // ---- output
