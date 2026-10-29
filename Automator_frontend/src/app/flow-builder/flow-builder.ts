@@ -6,12 +6,10 @@ import { environment } from '../../environments/environment.development';
 // Tip: use a dev proxy (proxy.conf.json: "/api" -> https://localhost:5000, secure:false)
 // and set this to '/api/Packages' to avoid CORS / self-signed cert issues.
 
-
 const baseUrl = `${environment.apiUrl}`;
 const API_URL = `${baseUrl}/api/Packages`;
+const WORKFLOW_UPLOAD_URL = `${baseUrl}/api/Workflows/upload`;
 
-const WORKFLOW_UPLOAD_URL =
- `${baseUrl}/api/Workflows/upload`;
 // ───────────────────────────── Models ─────────────────────────────
 export interface PackageAction {
   id: number;
@@ -28,14 +26,14 @@ export interface BotPackage {
   filePath: string;
   dependencies: string[];
   actions: PackageAction[];
-  className?: string; // optional: add this to your API so the workflow gets the real class name
+  className?: string;
 }
 
 /** literal = typed value, variable = {{variableName}} reference */
 export interface Binding {
   mode: 'literal' | 'variable';
   value: string;     // literal text OR the variable name
-  varValue: string;  // initial value of the variable (variable mode only)
+  varValue: string;  // initial value of the variable (only used if the variable is NOT declared in the Variables pane)
 }
 
 export interface FlowNode {
@@ -54,9 +52,23 @@ export interface Connection {
   to: number;
 }
 
+export type VarType = 'STRING' | 'NUMBER' | 'BOOLEAN';
+
+/** A variable declared by the user in the Variables pane. */
+export interface FlowVariable {
+  name: string;
+  type: VarType;
+  value: string; // initial value, kept as text and coerced on generation
+}
+
+export interface VarSuggestion {
+  name: string;
+  type: string;
+  source: 'declared' | 'output';
+}
+
 // ───────────────────────── Workflow generator ─────────────────────────
 
-// Class names aren't in the packages API, so map them here (or add `className` to the API).
 const CLASS_NAMES: Record<string, string> = {
   ExcelOperations: 'ExcelTools.ExcelReader',
   'REST API': 'REST_API.RestClient',
@@ -123,7 +135,13 @@ export function sortNodes(nodes: FlowNode[], conns: Connection[]): FlowNode[] {
   return out;
 }
 
-export function generateWorkflow(name: string, version: string, nodes: FlowNode[], conns: Connection[]) {
+export function generateWorkflow(
+  name: string,
+  version: string,
+  nodes: FlowNode[],
+  conns: Connection[],
+  declared: FlowVariable[] = [],
+) {
   const ordered = sortNodes(nodes, conns);
   const packages: Record<string, string> = {};
   const variables: Record<string, any> = {};
@@ -132,6 +150,19 @@ export function generateWorkflow(name: string, version: string, nodes: FlowNode[
   const produced = new Set<string>();
   ordered.forEach(n => Object.values(n.outputs).forEach(v => v.trim() && produced.add(varName(v))));
 
+  // 1) Variables created in the Variables pane always go into the JSON.
+  declared.forEach(d => {
+    const v = varName(d.name);
+    if (!v) return;
+    variables[v] = {
+      value: d.value === '' ? defaultFor(d.type) : coerce(d.value, d.type),
+      type: mapType(d.type),
+      input: !produced.has(v),
+      output: produced.has(v),
+    };
+  });
+
+  // 2) Actions
   ordered.forEach((n, i) => {
     packages[n.pkg.name] = '';
 
@@ -141,7 +172,7 @@ export function generateWorkflow(name: string, version: string, nodes: FlowNode[
       if (b.mode === 'variable' && b.value.trim()) {
         const v = varName(b.value);
         inputs[key] = `{{${v}}}`;
-        if (!variables[v]) {
+        if (!variables[v]) { // not declared -> create it from the inline initial value
           variables[v] = {
             value: b.varValue === '' ? defaultFor(type) : coerce(b.varValue, type),
             type: mapType(type),
@@ -158,7 +189,11 @@ export function generateWorkflow(name: string, version: string, nodes: FlowNode[
     for (const [key, type] of Object.entries(n.action.outputs)) {
       const v = varName(n.outputs[key] || `${n.action.name}_${key}_${n.id}`);
       outputs[key] = `{{${v}}}`;
-      variables[v] = { value: defaultFor(type), type: mapType(type), input: false, output: true };
+      if (variables[v]) {
+        variables[v].output = true;           // keep declared type / initial value
+      } else {
+        variables[v] = { value: defaultFor(type), type: mapType(type), input: false, output: true };
+      }
     }
 
     const cls = n.pkg.className ?? CLASS_NAMES[n.pkg.name] ?? n.pkg.name.replace(/\s+/g, '');
@@ -181,104 +216,33 @@ export class FlowBuilderComponent implements OnInit {
   private http = inject(HttpClient);
   private surface = viewChild.required<ElementRef<HTMLElement>>('surface');
 
-  submitting = signal(false);
-  submitMessage = signal('');
-  submitSuccess = signal(false);
-libraryOpen = signal(true);
-panelOpen   = signal(true);
-zoom        = signal(1);
-
-zoomIn()  { this.zoom.update(z => Math.min(2, +(z + 0.1).toFixed(2))); }
-zoomOut() { this.zoom.update(z => Math.max(0.4, +(z - 0.1).toFixed(2))); }
-fit()     { this.zoom.set(1); }
-back()    { history.back(); }   // or router.navigate(...)
-
-private readonly ACCENTS = ['#0f62d6', '#107c41', '#7a3fb0', '#c4562b', '#0b7a8c'];
-accentOf(pkgId: string | number): string {
-  const s = String(pkgId);
-  let h = 0;
-  for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return this.ACCENTS[h % this.ACCENTS.length];
-}
-  submitWorkflow(): void {
-    if (this.submitting()) {
-      return;
-    }
-
-    const flowName = this.flowName().trim();
-    const flowVersion = this.flowVersion().trim();
-
-    if (!flowName || !flowVersion) {
-      this.submitSuccess.set(false);
-      this.submitMessage.set('Flow name and version are required.');
-      return;
-    }
-
-    if (!this.nodes().length) {
-      this.submitSuccess.set(false);
-      this.submitMessage.set('Please add at least one action.');
-      return;
-    }
-
-    // Generate the workflow JSON from the current canvas.
-    const workflow = generateWorkflow(
-      flowName,
-      flowVersion,
-      this.nodes(),
-      this.connections()
-    );
-
-    this.submitting.set(true);
-    this.submitMessage.set('');
-
-    this.http.post(
-      WORKFLOW_UPLOAD_URL,
-      workflow
-    ).subscribe({
-      next: (response: any) => {
-        this.submitSuccess.set(true);
-
-        this.submitMessage.set(
-          response?.message ??
-          response?.Message ??
-          'Workflow submitted successfully.'
-        );
-
-        this.submitting.set(false);
-      },
-
-      error: (error) => {
-        this.submitSuccess.set(false);
-
-        if (error.status === 409) {
-          this.submitMessage.set(
-            error.error?.error ??
-            `Workflow '${flowName}' version '${flowVersion}' already exists.`
-          );
-        } else if (error.status === 0) {
-          this.submitMessage.set(
-            'Unable to connect to the API. Check the server and HTTPS certificate.'
-          );
-        } else {
-          this.submitMessage.set(
-            error.error?.error ??
-            error.error?.message ??
-            `Failed to submit workflow. HTTP status: ${error.status}`
-          );
-        }
-
-        this.submitting.set(false);
-      }
-    });
-  }
-setOutput(n: FlowNode, key: string, value: string) {
-  n.outputs[key] = value;
-  this.touch();
-}
   readonly NODE_W = 220;
   readonly PORT_Y = 22;
   readonly mapType = mapType;
+  readonly VAR_TYPES: VarType[] = ['STRING', 'NUMBER', 'BOOLEAN'];
 
+  // ---- UI state
+  submitting = signal(false);
+  submitMessage = signal('');
+  submitSuccess = signal(false);
+  libraryOpen = signal(true);
+  panelOpen = signal(true);
+  zoom = signal(1);
+
+  zoomIn() { this.zoom.update(z => Math.min(2, +(z + 0.1).toFixed(2))); }
+  zoomOut() { this.zoom.update(z => Math.max(0.4, +(z - 0.1).toFixed(2))); }
+  fit() { this.zoom.set(1); }
+  back() { history.back(); }
+
+  private readonly ACCENTS = ['#0f62d6', '#107c41', '#7a3fb0', '#c4562b', '#0b7a8c'];
+  accentOf(pkgId: string | number): string {
+    const s = String(pkgId);
+    let h = 0;
+    for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return this.ACCENTS[h % this.ACCENTS.length];
+  }
+
+  // ---- data
   packages = signal<BotPackage[]>([]);
   loading = signal(true);
   error = signal('');
@@ -288,13 +252,93 @@ setOutput(n: FlowNode, key: string, value: string) {
   nodes = signal<FlowNode[]>([]);
   connections = signal<Connection[]>([]);
   selectedId = signal<number | null>(null);
-  tab = signal<'props' | 'json'>('props');
+  tab = signal<'props' | 'vars' | 'json'>('props');
   pending = signal<{ from: number; x: number; y: number } | null>(null);
   copied = signal(false);
 
-  private seq = 1;
-  private dragging: { n: FlowNode; dx: number; dy: number } | null = null;
+  // ---- package groups (all collapsed initially)
+  expanded = signal<Set<number>>(new Set());
 
+  /** Groups are open when the user expanded them, or automatically while searching. */
+  isExpanded(id: number): boolean {
+    return this.search().trim() !== '' || this.expanded().has(id);
+  }
+  toggleGroup(e: Event, id: number) {
+    e.preventDefault(); // we control the open state ourselves
+    if (this.search().trim()) return;
+    this.expanded.update(s => {
+      const next = new Set(s);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  // ---- variables pane
+  variables = signal<FlowVariable[]>([]);
+  newVarName = signal('');
+  newVarType = signal<VarType>('STRING');
+  newVarValue = signal('');
+  varError = signal('');
+
+  onNewVarTypeChange(t: VarType) {
+    this.newVarType.set(t);
+    this.newVarValue.set(defaultLiteral(t));
+  }
+
+  addVariable() {
+    const name = varName(this.newVarName());
+    if (!name) { this.varError.set('Variable name is required.'); return; }
+    if (this.variables().some(v => v.name.toLowerCase() === name.toLowerCase())) {
+      this.varError.set(`Variable '${name}' already exists.`);
+      return;
+    }
+    this.variables.update(list => [
+      ...list,
+      { name, type: this.newVarType(), value: this.newVarValue() },
+    ]);
+    this.newVarName.set('');
+    this.newVarValue.set(defaultLiteral(this.newVarType()));
+    this.varError.set('');
+  }
+
+  updateVariable(name: string, field: 'type' | 'value', value: string) {
+    this.variables.update(list => list.map(v => {
+      if (v.name !== name) return v;
+      return field === 'type'
+        ? { ...v, type: value as VarType, value: defaultLiteral(value) }
+        : { ...v, value };
+    }));
+  }
+
+  removeVariable(name: string) {
+    this.variables.update(list => list.filter(v => v.name !== name));
+  }
+
+  isDeclared(name: string): boolean {
+    const n = varName(name);
+    return !!n && this.variables().some(v => v.name === n);
+  }
+
+  /** Declared variables + output variables produced by nodes on the canvas. */
+  suggestions = computed<VarSuggestion[]>(() => {
+    const map = new Map<string, VarSuggestion>();
+    this.variables().forEach(v => map.set(v.name, { name: v.name, type: v.type, source: 'declared' }));
+    this.nodes().forEach(n =>
+      Object.entries(n.action.outputs).forEach(([k, t]) => {
+        const name = varName(n.outputs[k] ?? '');
+        if (name && !map.has(name)) map.set(name, { name, type: mapType(t), source: 'output' });
+      }),
+    );
+    return [...map.values()];
+  });
+
+  /** Suggestions whose type matches the field's type. */
+  suggestionsFor(type: string): VarSuggestion[] {
+    const m = mapType(type);
+    return this.suggestions().filter(s => s.type === m);
+  }
+
+  // ---- computed
   groups = computed(() => {
     const q = this.search().toLowerCase().trim();
     return this.packages()
@@ -303,7 +347,16 @@ setOutput(n: FlowNode, key: string, value: string) {
   });
   selected = computed(() => this.nodes().find(n => n.id === this.selectedId()) ?? null);
   order = computed(() => sortNodes(this.nodes(), this.connections()).map(n => n.id));
-  json = computed(() => JSON.stringify(generateWorkflow(this.flowName(), this.flowVersion(), this.nodes(), this.connections()), null, 2));
+  json = computed(() =>
+    JSON.stringify(
+      generateWorkflow(this.flowName(), this.flowVersion(), this.nodes(), this.connections(), this.variables()),
+      null,
+      2,
+    ),
+  );
+
+  private seq = 1;
+  private dragging: { n: FlowNode; dx: number; dy: number } | null = null;
 
   ngOnInit() {
     this.http.get<BotPackage[]>(API_URL).subscribe({
@@ -316,7 +369,51 @@ setOutput(n: FlowNode, key: string, value: string) {
   orderOf = (id: number) => this.order().indexOf(id) + 1;
   touch() { this.nodes.update(n => [...n]); }
   set(b: Binding, field: keyof Binding, v: string) { (b as any)[field] = v; this.touch(); }
+  setOutput(n: FlowNode, key: string, value: string) { n.outputs[key] = value; this.touch(); }
   select(id: number) { this.selectedId.set(id); this.tab.set('props'); }
+
+  // ---- submit
+  submitWorkflow(): void {
+    if (this.submitting()) return;
+
+    const flowName = this.flowName().trim();
+    const flowVersion = this.flowVersion().trim();
+
+    if (!flowName || !flowVersion) {
+      this.submitSuccess.set(false);
+      this.submitMessage.set('Flow name and version are required.');
+      return;
+    }
+    if (!this.nodes().length) {
+      this.submitSuccess.set(false);
+      this.submitMessage.set('Please add at least one action.');
+      return;
+    }
+
+    const workflow = generateWorkflow(flowName, flowVersion, this.nodes(), this.connections(), this.variables());
+
+    this.submitting.set(true);
+    this.submitMessage.set('');
+
+    this.http.post(WORKFLOW_UPLOAD_URL, workflow).subscribe({
+      next: (response: any) => {
+        this.submitSuccess.set(true);
+        this.submitMessage.set(response?.message ?? response?.Message ?? 'Workflow submitted successfully.');
+        this.submitting.set(false);
+      },
+      error: (error) => {
+        this.submitSuccess.set(false);
+        if (error.status === 409) {
+          this.submitMessage.set(error.error?.error ?? `Workflow '${flowName}' version '${flowVersion}' already exists.`);
+        } else if (error.status === 0) {
+          this.submitMessage.set('Unable to connect to the API. Check the server and HTTPS certificate.');
+        } else {
+          this.submitMessage.set(error.error?.error ?? error.error?.message ?? `Failed to submit workflow. HTTP status: ${error.status}`);
+        }
+        this.submitting.set(false);
+      },
+    });
+  }
 
   // ---- palette -> canvas
   onDragStart(e: DragEvent, pkg: BotPackage, a: PackageAction) {
@@ -365,7 +462,7 @@ setOutput(n: FlowNode, key: string, value: string) {
     const p = this.pending();
     if (!p || p.from === toId) return;
     const exists = this.connections().some(c => c.from === p.from && c.to === toId);
-    if (exists || this.reaches(toId, p.from)) return; // no duplicates, no cycles
+    if (exists || this.reaches(toId, p.from)) return;
     this.connections.update(c => [...c, { id: this.seq++, from: p.from, to: toId }]);
   }
   private reaches(a: number, b: number): boolean {
@@ -418,7 +515,7 @@ setOutput(n: FlowNode, key: string, value: string) {
     return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
   }
   private toSurface(e: { clientX: number; clientY: number }) {
-    const r = this.surface().nativeElement.getBoundingClientRect(); // already accounts for scroll
+    const r = this.surface().nativeElement.getBoundingClientRect();
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   }
 

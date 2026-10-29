@@ -105,42 +105,45 @@
           <p class="err" role="alert">{{ error() }}</p>
         }
 
+        <!-- CHANGED: packages start collapsed; actions render only when expanded -->
         <div class="action-groups">
           @for (g of groups(); track g.pkg.id) {
-            <details class="package-group" open>
-              <summary>
+            <details class="package-group" [open]="isExpanded(g.pkg.id)">
+              <summary (click)="toggleGroup($event, g.pkg.id)">
                 <span class="chev" aria-hidden="true">›</span>
                 <span
                   class="package-mark"
                   aria-hidden="true"
                   [style.--accent]="accentOf(g.pkg.id)"></span>
                 <span class="package-name">{{ g.pkg.name }}</span>
-                <small>v{{ g.pkg.version }}</small>
+                <small>v{{ g.pkg.version }} · {{ g.actions.length }}</small>
               </summary>
 
-              <div class="package-actions">
-                @for (a of g.actions; track a.id) {
-                  <div
-                    class="item"
-                    draggable="true"
-                    title="Drag onto the canvas (or double-click)"
-                    (dragstart)="onDragStart($event, g.pkg, a)"
-                    (dblclick)="addNode(g.pkg, a, 60 + nodes().length * 30, 60 + nodes().length * 30)">
+              @if (isExpanded(g.pkg.id)) {
+                <div class="package-actions">
+                  @for (a of g.actions; track a.id) {
+                    <div
+                      class="item"
+                      draggable="true"
+                      title="Drag onto the canvas (or double-click)"
+                      (dragstart)="onDragStart($event, g.pkg, a)"
+                      (dblclick)="addNode(g.pkg, a, 60 + nodes().length * 30, 60 + nodes().length * 30)">
 
-                    <span
-                      class="action-symbol"
-                      aria-hidden="true"
-                      [style.--accent]="accentOf(g.pkg.id)">✧</span>
+                      <span
+                        class="action-symbol"
+                        aria-hidden="true"
+                        [style.--accent]="accentOf(g.pkg.id)">✧</span>
 
-                    <span class="action-info">
-                      <span class="action-name">{{ a.name }}</span>
-                      <small>{{ keys(a.inputs).length }} in, {{ keys(a.outputs).length }} out</small>
-                    </span>
+                      <span class="action-info">
+                        <span class="action-name">{{ a.name }}</span>
+                        <small>{{ keys(a.inputs).length }} in, {{ keys(a.outputs).length }} out</small>
+                      </span>
 
-                    <span class="drag-symbol" aria-hidden="true">⠿</span>
-                  </div>
-                }
-              </div>
+                      <span class="drag-symbol" aria-hidden="true">⠿</span>
+                    </div>
+                  }
+                </div>
+              }
             </details>
           }
         </div>
@@ -238,7 +241,7 @@
             <div class="empty">
               <div class="empty-icon" aria-hidden="true">✦</div>
               <h3>Start building your workflow</h3>
-              <p>Drag an action from the library, or double-click one to add it.</p>
+              <p>Expand a package, then drag an action onto the canvas, or double-click it to add it.</p>
               <p class="empty-tip">
                 Drag from a node's bottom port to another node's top port
                 to set the execution order.
@@ -258,6 +261,7 @@
       <div class="canvas-stats">
         <span>{{ nodes().length }} actions</span>
         <span>{{ connections().length }} connections</span>
+        <span>{{ variables().length }} variables</span>
       </div>
     </main>
 
@@ -276,6 +280,7 @@
             (click)="panelOpen.set(false)">✕</button>
         </div>
 
+        <!-- CHANGED: added Variables tab -->
         <div class="tabs" role="tablist">
           <button
             type="button"
@@ -283,6 +288,13 @@
             [class.on]="tab() === 'props'"
             [attr.aria-selected]="tab() === 'props'"
             (click)="tab.set('props')">Properties</button>
+
+          <button
+            type="button"
+            role="tab"
+            [class.on]="tab() === 'vars'"
+            [attr.aria-selected]="tab() === 'vars'"
+            (click)="tab.set('vars')">Variables ({{ variables().length }})</button>
 
           <button
             type="button"
@@ -331,6 +343,7 @@
 
                 @for (k of keys(n.action.inputs); track k) {
                   @let b = n.inputs[k];
+                  @let inId = 'dl-in-' + n.id + '-' + k;
 
                   <div class="field">
                     <div class="flabel">
@@ -354,14 +367,28 @@
                           <option value="false">false</option>
                         </select>
                       } @else {
+                        <!-- CHANGED: datalist suggestions in variable mode -->
                         <input
                           [placeholder]="b.mode === 'variable' ? 'Variable name' : 'Enter value'"
+                          [attr.list]="b.mode === 'variable' ? inId : null"
+                          autocomplete="off"
                           [ngModel]="b.value"
                           (ngModelChange)="set(b, 'value', $event)" />
+
+                        @if (b.mode === 'variable') {
+                          <datalist [id]="inId">
+                            @for (s of suggestionsFor(n.action.inputs[k]); track s.name) {
+                              <option
+                                [value]="s.name"
+                                [attr.label]="s.type + (s.source === 'output' ? ' · output' : '')"></option>
+                            }
+                          </datalist>
+                        }
                       }
                     </div>
 
-                    @if (b.mode === 'variable') {
+                    <!-- CHANGED: only ask for an initial value if the variable isn't declared in the Variables pane -->
+                    @if (b.mode === 'variable' && b.value.trim() && !isDeclared(b.value)) {
                       <input
                         class="sub"
                         placeholder="Initial value of variable"
@@ -374,16 +401,29 @@
                 <h5 class="section-title">Outputs to variables</h5>
 
                 @for (k of keys(n.action.outputs); track k) {
+                  @let outId = 'dl-out-' + n.id + '-' + k;
+
                   <div class="field">
                     <div class="flabel">
                       <span>{{ k }}</span>
                       <small>{{ mapType(n.action.outputs[k]) }}</small>
                     </div>
 
+                    <!-- CHANGED: datalist suggestions for output variable names -->
                     <input
+                      [attr.list]="outId"
+                      autocomplete="off"
                       [ngModel]="n.outputs[k]"
                       (ngModelChange)="setOutput(n, k, $event)"
                       placeholder="Output variable name" />
+
+                    <datalist [id]="outId">
+                      @for (s of suggestionsFor(n.action.outputs[k]); track s.name) {
+                        <option
+                          [value]="s.name"
+                          [attr.label]="s.type + (s.source === 'output' ? ' · output' : '')"></option>
+                      }
+                    </datalist>
                   </div>
                 }
 
@@ -404,6 +444,104 @@
                 <small>Click a connection line to remove it.</small>
               </section>
             }
+
+          } @else if (tab() === 'vars') {
+
+            <!-- NEW: Variables pane -->
+            <section class="card">
+              <h4 class="card-title">Create variable</h4>
+
+              <label class="form-label">
+                Name
+                <input
+                  placeholder="e.g. filePath"
+                  [ngModel]="newVarName()"
+                  (ngModelChange)="newVarName.set($event); varError.set('')"
+                  (keydown.enter)="addVariable()" />
+              </label>
+
+              <div class="inline">
+                <label class="form-label">
+                  Type
+                  <select [ngModel]="newVarType()" (ngModelChange)="onNewVarTypeChange($event)">
+                    @for (t of VAR_TYPES; track t) {
+                      <option [value]="t">{{ t }}</option>
+                    }
+                  </select>
+                </label>
+
+                <label class="form-label">
+                  Initial value
+                  @if (newVarType() === 'BOOLEAN') {
+                    <select [ngModel]="newVarValue()" (ngModelChange)="newVarValue.set($event)">
+                      <option value="true">true</option>
+                      <option value="false">false</option>
+                    </select>
+                  } @else {
+                    <input
+                      [type]="newVarType() === 'NUMBER' ? 'number' : 'text'"
+                      [ngModel]="newVarValue()"
+                      (ngModelChange)="newVarValue.set($event)"
+                      (keydown.enter)="addVariable()" />
+                  }
+                </label>
+              </div>
+
+              @if (varError()) {
+                <p class="err" role="alert">{{ varError() }}</p>
+              }
+
+              <button type="button" class="btn-primary" (click)="addVariable()">Add variable</button>
+            </section>
+
+            <section class="card">
+              <h4 class="card-title">Variables ({{ variables().length }})</h4>
+
+              @if (!variables().length) {
+                <p class="hint">
+                  No variables yet. Created variables are added to the workflow JSON
+                  and suggested in action inputs and outputs.
+                </p>
+              }
+
+              @for (v of variables(); track v.name) {
+                <div class="var-row">
+                  <div class="var-head">
+                    <b>{{ v.name }}</b>
+                    <button
+                      type="button"
+                      class="icon-btn"
+                      [attr.aria-label]="'Delete ' + v.name"
+                      (click)="removeVariable(v.name)">✕</button>
+                  </div>
+
+                  <div class="inline">
+                    <select
+                      [ngModel]="v.type"
+                      (ngModelChange)="updateVariable(v.name, 'type', $event)">
+                      @for (t of VAR_TYPES; track t) {
+                        <option [value]="t">{{ t }}</option>
+                      }
+                    </select>
+
+                    @if (v.type === 'BOOLEAN') {
+                      <select
+                        [ngModel]="v.value"
+                        (ngModelChange)="updateVariable(v.name, 'value', $event)">
+                        <option value="true">true</option>
+                        <option value="false">false</option>
+                      </select>
+                    } @else {
+                      <input
+                        [type]="v.type === 'NUMBER' ? 'number' : 'text'"
+                        [ngModel]="v.value"
+                        (ngModelChange)="updateVariable(v.name, 'value', $event)"
+                        placeholder="Initial value" />
+                    }
+                  </div>
+                </div>
+              }
+            </section>
 
           } @else {
 
