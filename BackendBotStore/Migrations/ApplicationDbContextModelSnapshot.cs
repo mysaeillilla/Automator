@@ -32,6 +32,10 @@ namespace BackendBotStore.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("ActionIcon")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<List<string>>("Dependencies")
                         .IsRequired()
                         .HasColumnType("jsonb");
@@ -99,6 +103,10 @@ namespace BackendBotStore.Migrations
                     b.Property<Dictionary<string, string>>("Outputs")
                         .IsRequired()
                         .HasColumnType("jsonb");
+
+                    b.Property<string>("PackageIcon")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<int>("PackageId")
                         .HasColumnType("integer");

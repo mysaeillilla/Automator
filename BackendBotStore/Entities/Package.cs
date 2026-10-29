@@ -5,6 +5,7 @@ public class Package
     public int Id { get; set; }
 
     public string Name { get; set; } = string.Empty;
+    public string ActionIcon { get; set; } = string.Empty;
 
     public string Version { get; set; } = "1.0.0";
 

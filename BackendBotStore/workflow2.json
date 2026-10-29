@@ -1,0 +1,326 @@
+
+{
+  "flow_name": "Core Actions Demo",
+  "version": "1.0.0",
+  "packages": {
+    "NotificationWindow": "D:\\projects\\New folder\\BackendBotStore\\Packages\\NotificationWindow\\1.0.0\\NotificationWindow.dll"
+  },
+  "variables": {
+    "userName": {
+      "value": "Saeil",
+      "type": "STRING",
+      "input": true,
+      "output": false
+    },
+    "age": {
+      "value": 34,
+      "type": "NUMBER",
+      "input": true,
+      "output": false
+    },
+    "status": {
+      "value": "",
+      "type": "STRING",
+      "input": false,
+      "output": true
+    },
+    "errorMessage": {
+      "value": "",
+      "type": "STRING",
+      "input": false,
+      "output": true
+    },
+    "count": {
+      "value": 0,
+      "type": "NUMBER",
+      "input": false,
+      "output": false
+    },
+    "loopIndex": {
+      "value": 0,
+      "type": "NUMBER",
+      "input": false,
+      "output": false
+    },
+    "currentUser": {
+      "value": "",
+      "type": "ANY",
+      "input": false,
+      "output": false
+    },
+    "users": {
+      "value": [
+        {
+          "name": "Saeil",
+          "age": 34
+        },
+        {
+          "name": "Adarsh",
+          "age": 16
+        },
+        {
+          "name": "Anu",
+          "age": 25
+        }
+      ],
+      "type": "LIST",
+      "input": true,
+      "output": false
+    },
+    "numbers": {
+      "value": [1, 2, 3, 4, 5],
+      "type": "LIST",
+      "input": false,
+      "output": false
+    },
+    "currentNumber": {
+      "value": 0,
+      "type": "NUMBER",
+      "input": false,
+      "output": false
+    },
+    "summary": {
+      "value": "",
+      "type": "STRING",
+      "input": false,
+      "output": true
+    }
+  },
+  "Actions": {
+    "1": {
+      "ClassName": "Core",
+      "FunctionName": "TryCatch",
+      "Inputs": {},
+      "Outputs": {
+        "Error": "{{errorMessage}}"
+      },
+      "Body": [
+        {
+          "ClassName": "Core",
+          "FunctionName": "SetVariable",
+          "Inputs": {
+            "Value": "Checking {{userName}}"
+          },
+          "Outputs": {
+            "Response": "{{status}}"
+          }
+        },
+        {
+          "ClassName": "Core",
+          "FunctionName": "If",
+          "Inputs": {},
+          "Outputs": {},
+          "Condition": {
+            "Left": "{{age}}",
+            "Operator": "GreaterThanOrEqual",
+            "Right": 18
+          },
+          "Then": [
+            {
+              "ClassName": "Core",
+              "FunctionName": "SetVariable",
+              "Inputs": {
+                "Value": "{{userName}} is an adult"
+              },
+              "Outputs": {
+                "Response": "{{status}}"
+              }
+            },
+            {
+              "ClassName": "NotificationWindow",
+              "FunctionName": "ShowString",
+              "Inputs": {
+                "title": "Age Check",
+                "message": "{{userName}} is an adult ({{age}}).",
+                "autoCloseSeconds": 5
+              },
+              "Outputs": {}
+            }
+          ],
+          "Else": [
+            {
+              "ClassName": "Core",
+              "FunctionName": "SetVariable",
+              "Inputs": {
+                "Value": "{{userName}} is a minor"
+              },
+              "Outputs": {
+                "Response": "{{status}}"
+              }
+            },
+            {
+              "ClassName": "NotificationWindow",
+              "FunctionName": "ShowString",
+              "Inputs": {
+                "title": "Age Check",
+                "message": "{{userName}} is a minor ({{age}}).",
+                "autoCloseSeconds": 5
+              },
+              "Outputs": {}
+            }
+          ]
+        },
+        {
+          "ClassName": "Core",
+          "FunctionName": "Evaluate",
+          "Inputs": {
+            "Expression": "count + 1"
+          },
+          "Outputs": {
+            "Response": "{{count}}"
+          }
+        },
+        {
+          "ClassName": "Core",
+          "FunctionName": "ForEach",
+          "Inputs": {
+            "Collection": "{{users}}"
+          },
+          "Outputs": {
+            "Item": "{{currentUser}}",
+            "Index": "{{loopIndex}}"
+          },
+          "Body": [
+            {
+              "ClassName": "Core",
+              "FunctionName": "If",
+              "Inputs": {},
+              "Outputs": {},
+              "Condition": {
+                "Left": "{{currentUser.age}}",
+                "Operator": "LessThan",
+                "Right": 18
+              },
+              "Then": [
+                {
+                  "ClassName": "Core",
+                  "FunctionName": "Continue",
+                  "Inputs": {},
+                  "Outputs": {}
+                }
+              ],
+              "Else": [
+                {
+                  "ClassName": "Core",
+                  "FunctionName": "SetVariable",
+                  "Inputs": {
+                    "Value": "Adult user found at index {{loopIndex}}"
+                  },
+                  "Outputs": {
+                    "Response": "{{status}}"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "ClassName": "Core",
+          "FunctionName": "ForCount",
+          "Inputs": {
+            "From": 1,
+            "To": 5,
+            "Step": 1
+          },
+          "Outputs": {
+            "Index": "{{currentNumber}}"
+          },
+          "Body": [
+            {
+              "ClassName": "Core",
+              "FunctionName": "If",
+              "Inputs": {},
+              "Outputs": {},
+              "Condition": {
+                "Left": "{{currentNumber}}",
+                "Operator": "GreaterThan",
+                "Right": 3
+              },
+              "Then": [
+                {
+                  "ClassName": "Core",
+                  "FunctionName": "Break",
+                  "Inputs": {},
+                  "Outputs": {}
+                }
+              ],
+              "Else": [
+                {
+                  "ClassName": "Core",
+                  "FunctionName": "SetVariable",
+                  "Inputs": {
+                    "Value": "Counted loop index: {{currentNumber}}"
+                  },
+                  "Outputs": {
+                    "Response": "{{status}}"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "ClassName": "Core",
+          "FunctionName": "While",
+          "Inputs": {},
+          "Outputs": {},
+          "Condition": {
+            "Left": "{{count}}",
+            "Operator": "LessThan",
+            "Right": 3
+          },
+          "Body": [
+            {
+              "ClassName": "Core",
+              "FunctionName": "Evaluate",
+              "Inputs": {
+                "Expression": "count + 1"
+              },
+              "Outputs": {
+                "Response": "{{count}}"
+              }
+            }
+          ]
+        },
+        {
+          "ClassName": "Core",
+          "FunctionName": "SetVariable",
+          "Inputs": {
+            "Value": "Completed successfully"
+          },
+          "Outputs": {
+            "Response": "{{summary}}"
+          }
+        },
+        {
+          "ClassName": "Core",
+          "FunctionName": "Return",
+          "Inputs": {},
+          "Outputs": {}
+        }
+      ],
+      "Catch": [
+        {
+          "ClassName": "Core",
+          "FunctionName": "SetVariable",
+          "Inputs": {
+            "Value": "Workflow failed: {{errorMessage}}"
+          },
+          "Outputs": {
+            "Response": "{{summary}}"
+          }
+        },
+        {
+          "ClassName": "NotificationWindow",
+          "FunctionName": "ShowString",
+          "Inputs": {
+            "title": "Workflow Error",
+            "message": "{{errorMessage}}",
+            "autoCloseSeconds": 0
+          },
+          "Outputs": {}
+        }
+      ]
+    }
+  }
+}

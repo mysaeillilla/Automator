@@ -1,5 +1,5 @@
 import { Component, DestroyRef, ElementRef, HostListener, computed, inject, signal, viewChild, OnInit } from '@angular/core';
-import { NgTemplateOutlet } from '@angular/common';
+import { CommonModule, NgTemplateOutlet } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
@@ -71,7 +71,7 @@ export interface Connection {
   to: number;
 }
 
-export type VarType = 'STRING' | 'NUMBER' | 'BOOLEAN';
+export type VarType = 'STRING' | 'NUMBER' | 'BOOLEAN' | 'LIST' | 'ANY';
 
 /** A variable declared by the user in the Variables pane. */
 export interface FlowVariable {
@@ -133,20 +133,31 @@ export const mapType = (t: string): string => {
   }
 };
 
-export const defaultFor = (t: string): string | number | boolean => {
+export const defaultFor = (t: string): unknown => {
   const m = mapType(t);
-  return m === 'NUMBER' ? 0 : m === 'BOOLEAN' ? false : '';
+  if (m === 'NUMBER') return 0;
+  if (m === 'BOOLEAN') return false;
+  if (m === 'LIST') return [];
+  if (m === 'ANY') return null;
+  return '';
 };
 
 export const defaultLiteral = (t: string): string => {
   const m = mapType(t);
-  return m === 'NUMBER' ? '0' : m === 'BOOLEAN' ? 'false' : '';
+  if (m === 'NUMBER') return '0';
+  if (m === 'BOOLEAN') return 'false';
+  if (m === 'LIST') return '[]';
+  return '';
 };
 
-const coerce = (v: string, t: string): string | number | boolean => {
+const coerce = (v: string, t: string): unknown => {
   const m = mapType(t);
-  if (m === 'BOOLEAN') return v === 'true';
+  if (m === 'BOOLEAN') return v.toLowerCase() === 'true';
   if (m === 'NUMBER') { const n = Number(v); return v.trim() === '' || isNaN(n) ? 0 : n; }
+  if (m === 'LIST' || m === 'ANY') {
+    if (!v.trim()) return m === 'LIST' ? [] : null;
+    try { return JSON.parse(v); } catch { return v; }
+  }
   return v;
 };
 
@@ -275,15 +286,17 @@ export function generateWorkflow(
       Outputs: outputBindings,
     };
 
-    if (isTryCatch(n)) {
+    const actionName = n.action.name.toLowerCase();
+    if (actionName === 'trycatch') {
       step.Body = siblings(n.id, 'Body').map(serializeNode);
       step.Catch = siblings(n.id, 'Catch').map(serializeNode);
-    }
-
-    if (isIf(n)) {
-      step.Condition = n.condition ?? { Left: '', Operator: 'equal', Right: '' };
+    } else if (actionName === 'if') {
+      step.Condition = n.condition ?? { Left: '', Operator: 'Equals', Right: '' };
       step.Then = siblings(n.id, 'Then').map(serializeNode);
       step.Else = siblings(n.id, 'Else').map(serializeNode);
+    } else if (['foreach', 'forcount', 'while', 'loop'].includes(actionName)) {
+      step.Body = siblings(n.id, 'Body').map(serializeNode);
+      if (actionName === 'while') step.Condition = n.condition ?? { Left: '', Operator: 'LessThan', Right: 0 };
     }
 
     return step;
@@ -302,7 +315,7 @@ export function generateWorkflow(
 @Component({
   selector: 'app-flow-builder',
   standalone: true,
-  imports: [FormsModule, NgTemplateOutlet],
+  imports: [FormsModule, NgTemplateOutlet,CommonModule],
   templateUrl: './flow-builder.html',
   styleUrl: './flow-builder.css',
 })
@@ -311,7 +324,7 @@ export class FlowBuilderComponent implements OnInit {
   private route = inject(ActivatedRoute);          // NEW
   private destroyRef = inject(DestroyRef);         // NEW
   private surface = viewChild.required<ElementRef<HTMLElement>>('surface');
-
+readonly literalVariableToken = '{{myVar}}';
   readonly NODE_W = 220;
   readonly NODE_H = 72;                            // NEW: must match the card height in the template
   readonly mapType = mapType;
@@ -505,8 +518,16 @@ export class FlowBuilderComponent implements OnInit {
   private withCoreActions(packages: BotPackage[]): BotPackage[] {
     const builtIns: PackageAction[] = [
       { id: -1, packageId: -100, name: 'TryCatch', inputs: {}, outputs: { Error: 'STRING' } },
-      { id: -2, packageId: -100, name: 'SetVariable', inputs: { Value: 'STRING' }, outputs: { Response: 'STRING' } },
+      { id: -2, packageId: -100, name: 'SetVariable', inputs: { Value: 'ANY' }, outputs: { Response: 'ANY' } },
       { id: -3, packageId: -100, name: 'If', inputs: {}, outputs: {} },
+      { id: -4, packageId: -100, name: 'Evaluate', inputs: { Expression: 'STRING' }, outputs: { Response: 'ANY' } },
+      { id: -5, packageId: -100, name: 'ForEach', inputs: { Collection: 'LIST' }, outputs: { Item: 'ANY', Index: 'NUMBER' } },
+      { id: -6, packageId: -100, name: 'ForCount', inputs: { From: 'NUMBER', To: 'NUMBER', Step: 'NUMBER' }, outputs: { Index: 'NUMBER' } },
+      { id: -7, packageId: -100, name: 'While', inputs: {}, outputs: {} },
+      { id: -8, packageId: -100, name: 'Break', inputs: {}, outputs: {} },
+      { id: -9, packageId: -100, name: 'Continue', inputs: {}, outputs: {} },
+      { id: -10, packageId: -100, name: 'Return', inputs: {}, outputs: {} },
+      { id: -11, packageId: -100, name: 'Loop', inputs: {}, outputs: {} },
     ];
 
     const coreIndex = packages.findIndex(p => p.className === 'Core' || p.name.replace(/\s+/g, '') === 'Core');
@@ -607,7 +628,7 @@ export class FlowBuilderComponent implements OnInit {
           outputs,
           parentId,
           branch: branch ?? null,
-          ...(step.Condition ? { condition: step.Condition } : {}),
+          ...(step.Condition ? { condition: step.Condition } : (['if', 'while'].includes(action.name.toLowerCase()) ? { condition: { Left: '', Operator: action.name.toLowerCase() === 'while' ? 'LessThan' : 'Equals', Right: 0 } } : {})),
         };
         nodes.push(node);
         siblingIds.push(id);
@@ -635,7 +656,7 @@ export class FlowBuilderComponent implements OnInit {
         return {
           name,
           type: this.VAR_TYPES.includes(t) ? t : 'STRING',
-          value: v.value === null || v.value === undefined ? '' : String(v.value),
+          value: v.value === null || v.value === undefined ? (t === 'LIST' ? '[]' : '') : typeof v.value === 'object' ? JSON.stringify(v.value) : String(v.value),
         };
       });
 
@@ -656,6 +677,79 @@ export class FlowBuilderComponent implements OnInit {
   set(b: Binding, field: keyof Binding, v: string) { (b as any)[field] = v; this.touch(); }
   setOutput(n: FlowNode, key: string, value: string) { n.outputs[key] = value; this.touch(); }
   select(id: number) { this.selectedId.set(id); this.tab.set('props'); }
+
+  actionIcon(node: FlowNode): string {
+    const name = node.action.name.toLowerCase();
+    const pkg = (node.pkg.className ?? node.pkg.name).toLowerCase();
+    if (name === 'trycatch') return 'shield-check';
+    if (name === 'if') return 'git-branch';
+    if (['foreach', 'forcount', 'while', 'loop'].includes(name)) return 'repeat';
+    if (name === 'break' || name === 'continue') return 'corner-down-right';
+    if (name === 'evaluate') return 'function-square';
+    if (name === 'setvariable') return 'variable';
+    if (name === 'return') return 'log-out';
+    if (pkg.includes('notification')) return 'bell-ring';
+    return 'zap';
+  }
+
+  actionColor(node: FlowNode): string {
+    const name = node.action.name.toLowerCase();
+    const pkg = (node.pkg.className ?? node.pkg.name).toLowerCase();
+    if (name === 'if') return '#8b5cf6';
+    if (['trycatch', 'break', 'continue', 'return'].includes(name)) return '#64748b';
+    if (['foreach', 'forcount', 'while', 'loop'].includes(name)) return '#0d9488';
+    if (name === 'evaluate') return '#2563eb';
+    if (name === 'setvariable') return '#db2777';
+    if (pkg.includes('notification')) return '#ea580c';
+    return this.accentOf(node.pkg.id);
+  }
+
+  actionDescription(node: FlowNode): string {
+    const descriptions: Record<string, string> = {
+      trycatch: 'Run actions safely and handle errors',
+      if: 'Choose a path based on a condition',
+      setvariable: 'Set a value in a workflow variable',
+      evaluate: 'Evaluate an expression',
+      foreach: 'Run actions for each item in a collection',
+      forcount: 'Repeat actions over a numeric range',
+      while: 'Repeat while a condition is true',
+      break: 'Exit the current loop',
+      continue: 'Skip to the next loop iteration',
+      return: 'Finish the current workflow'
+    };
+    return descriptions[node.action.name.toLowerCase()] ?? `${node.pkg.name} action`;
+  }
+
+  isLoop(node: FlowNode): boolean {
+    return ['foreach', 'forcount', 'while', 'loop'].includes(node.action.name.toLowerCase());
+  }
+
+  branchesFor(node: FlowNode): WorkflowBranch[] {
+    const name = node.action.name.toLowerCase();
+    if (name === 'trycatch') return ['Body', 'Catch'];
+    if (name === 'if') return ['Then', 'Else'];
+    if (this.isLoop(node)) return ['Body'];
+    return [];
+  }
+
+  branchLabel(branch: WorkflowBranch): string {
+    return ({ Body: 'Do', Catch: 'On error', Then: 'If yes', Else: 'If no' } as Record<WorkflowBranch, string>)[branch];
+  }
+
+  conditionValue(node: FlowNode, field: keyof WorkflowCondition): string {
+    const value = node.condition?.[field];
+    return value === null || value === undefined ? '' : String(value);
+  }
+
+  updateConditionFromText(node: FlowNode, field: keyof WorkflowCondition, value: string): void {
+    this.setCondition(node.id, field, field === 'Operator' ? value : this.parseConditionValue(value));
+  }
+
+  addActionFromPalette(pkg: BotPackage, action: PackageAction): void {
+    const root = this.rootNodes();
+    const y = root.length ? Math.max(...root.map(n => n.y + this.NODE_H + 56)) : 60;
+    this.addNode(pkg, action, 300, y);
+  }
 
   // ---- submit
   submitWorkflow(): void {
@@ -726,7 +820,7 @@ export class FlowBuilderComponent implements OnInit {
     this.keys(action.outputs).forEach(k => (outputs[k] = `${action.name}_${k}_${id}`));
     const node: FlowNode = { id, x: Math.max(0, x), y: Math.max(0, y), pkg, action, inputs, outputs, parentId: null, branch: null };
     if (action.name.toLowerCase() === 'if') {
-      node.condition = { Left: '', Operator: 'greaterOrEqual', Right: 0 };
+      node.condition = { Left: '', Operator: 'GreaterThanOrEqual', Right: 0 };
     }
     this.nodes.update(n => [...n, node]);
     this.select(id);
@@ -747,7 +841,9 @@ export class FlowBuilderComponent implements OnInit {
         ? branch === 'Body' || branch === 'Catch'
         : parentAction === 'if'
           ? branch === 'Then' || branch === 'Else'
-          : false;
+          : ['foreach', 'forcount', 'while', 'loop'].includes(parentAction)
+            ? branch === 'Body'
+            : false;
       if (!validBranch) return;
 
       // Prevent parent/child cycles in the generated workflow tree.
@@ -777,11 +873,35 @@ export class FlowBuilderComponent implements OnInit {
   }
 
   /** Top-level actions, ordered by their workflow connections/position. */
-  rootNodes(): FlowNode[] {
-    const roots = this.nodes().filter(n => n.parentId == null);
-    const ids = new Set(roots.map(n => n.id));
-    return sortNodes(roots, this.connections().filter(c => ids.has(c.from) && ids.has(c.to)));
+  // rootNodes(): FlowNode[] {
+  //   const roots = this.nodes().filter(n => n.parentId == null);
+  //   const ids = new Set(roots.map(n => n.id));
+  //   return sortNodes(roots, this.connections().filter(c => ids.has(c.from) && ids.has(c.to)));
+  // }
+
+isDescendant(parentId: number, nodeId: number): boolean {
+  const nodeMap = new Map(
+    this.nodes().map(node => [node.id, node])
+  );
+
+  let current = nodeMap.get(parentId);
+
+  while (current?.parentId != null) {
+    if (current.parentId === nodeId) {
+      return true;
+    }
+
+    current = nodeMap.get(current.parentId);
   }
+
+  return false;
+}
+
+ rootNodes = computed(() =>
+  this.nodes().filter(node =>
+    node.parentId === null || node.parentId === undefined
+  )
+);
 
   /** Children rendered inside a TryCatch/If branch, in execution order. */
   childrenOf(parentId: number, branch: WorkflowBranch): FlowNode[] {
