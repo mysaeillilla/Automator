@@ -8,12 +8,59 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BackendBotStore.Controllers;
 
+/// <summary>Describes one built-in "Core" action so the designer can render it and its child blocks.</summary>
+public sealed record CoreActionInfo(
+    string Name,
+    string Description,
+    Dictionary<string, string> Inputs,
+    Dictionary<string, string> Outputs,
+    string[] Blocks,
+    bool HasCondition);
+
 [ApiController]
 [Route("api/[controller]")]
 public class WorkflowExecutionController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly WorkflowRunner _runner;
+
+    /// <summary>Child-action lists a Core action can contain. Used to count nested actions.</summary>
+    private static readonly string[] BlockProperties = { "Body", "Then", "Else", "Catch" };
+
+    private static readonly CoreActionInfo[] CoreActions =
+    {
+        new("SetVariable", "Assigns a value to a variable.",
+            new() { ["Value"] = "ANY" }, new() { ["Response"] = "ANY" }, Array.Empty<string>(), false),
+
+        new("Evaluate", "Evaluates an expression over the workflow variables, e.g. \"count + 1\".",
+            new() { ["Expression"] = "STRING" }, new() { ["Response"] = "ANY" }, Array.Empty<string>(), false),
+
+        new("If", "Runs Then when the condition is true, otherwise Else.",
+            new(), new(), new[] { "Then", "Else" }, true),
+
+        new("ForEach", "Loops over a list, dictionary, data table or JSON array/object.",
+            new() { ["Collection"] = "ANY" },
+            new() { ["Item"] = "ANY", ["Index"] = "NUMBER", ["Key"] = "ANY" },
+            new[] { "Body" }, false),
+
+        new("ForCount", "Loops from From to To (inclusive) by Step.",
+            new() { ["From"] = "NUMBER", ["To"] = "NUMBER", ["Step"] = "NUMBER" },
+            new() { ["Index"] = "NUMBER" },
+            new[] { "Body" }, false),
+
+        new("While", "Repeats Body while the condition is true.",
+            new(), new(), new[] { "Body" }, true),
+
+        new("Break", "Exits the innermost loop.", new(), new(), Array.Empty<string>(), false),
+        new("Continue", "Skips to the next iteration of the innermost loop.", new(), new(), Array.Empty<string>(), false),
+        new("Return", "Stops the workflow successfully.", new(), new(), Array.Empty<string>(), false),
+
+        new("TryCatch", "Runs Body; if an action fails, stores the message in Error and runs Catch.",
+            new(), new() { ["Error"] = "STRING" }, new[] { "Body", "Catch" }, false),
+
+        new("Fail", "Fails the workflow (or the enclosing TryCatch) with a message.",
+            new() { ["Message"] = "STRING" }, new(), Array.Empty<string>(), false),
+    };
 
     public WorkflowExecutionController(ApplicationDbContext db, WorkflowRunner runner)
     {
@@ -37,11 +84,18 @@ public class WorkflowExecutionController : ControllerBase
     }
 
     /// <summary>
+    /// Built-in control actions (ClassName "Core"). They need no DLL and must not be listed under "packages".
+    /// </summary>
+    [HttpGet("core")]
+    public IActionResult GetCoreActions() => Ok(new { package = WorkflowExecutor.CorePackage, actions = CoreActions });
+
+    /// <summary>
     /// Starts a saved workflow (looked up by its id in the Workflows table)
     /// and returns immediately with an execution id.
     /// Every key under "packages" in the workflow JSON is a package name; its value is replaced
     /// with the DLL path from the Packages table (matched by name) before the workflow is handed
-    /// to the runner. Each action's "ClassName" refers to one of these package names.
+    /// to the runner. Each non-Core action's "ClassName" refers to one of these package names;
+    /// "Core" actions are built in and need no package.
     /// </summary>
     [HttpPost("execute/{workflowId:int}")]
     public async Task<IActionResult> Execute(int workflowId)
@@ -70,7 +124,8 @@ public class WorkflowExecutionController : ControllerBase
             return UnprocessableEntity(new { success = false, error = $"Stored JSON for workflow {workflowId} is invalid." });
         }
 
-        // 2. Count actions from the resolved JSON.
+        // 2. Count actions (including nested ones) from the resolved JSON.
+        //    With loops this is the number of steps defined, not the number that will execute.
         int totalActions;
         try
         {
@@ -111,6 +166,8 @@ public class WorkflowExecutionController : ControllerBase
     /// While Pending/Running: per-action status with inputs and outputs.
     /// Once finished: overall status, error (if any) and the output variables with their values.
     /// Add ?includeActions=true to also get the per-action detail for a finished run.
+    /// Action ids are paths: "3" (top level), "3[2].1" (2nd-index iteration of loop 3, first child),
+    /// "4.then.1" / "4.else.1" (If branches), "5.try.1" / "5.catch.1" (TryCatch).
     /// </summary>
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetStatus(Guid id, [FromQuery] bool includeActions = false)
@@ -177,11 +234,16 @@ public class WorkflowExecutionController : ControllerBase
 
     // ── helpers ──────────────────────────────────────────────
 
+    private static bool IsCoreName(string name) =>
+        name.Equals(WorkflowExecutor.CorePackage, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
     /// Looks at the "packages" object of the workflow JSON. Every key is treated as a package name;
     /// it is matched against Packages.Name and its value is replaced with the package's DLL path
     /// (normalized to an absolute path, the same way the executor resolves it).
     /// If several versions of a package exist, the most recently registered one (highest Id) is used.
+    /// The built-in "Core" package is not looked up: if present it is removed from the section,
+    /// because the executor handles Core actions itself.
     /// Returns the rewritten JSON plus the names that could not be resolved.
     /// </summary>
     private async Task<(string Json, List<string> Missing)> ResolvePackagePathsAsync(string workflowJson)
@@ -205,14 +267,23 @@ public class WorkflowExecutionController : ControllerBase
         if (packagesKey is null || root[packagesKey] is not JsonObject packages)
             return (workflowJson, missing);   // no packages section, nothing to resolve
 
-        // Every key is a package name.
+        // Core is built in: drop it so it is never treated as a missing DLL.
+        var coreKeys = packages
+            .Select(p => p.Key)
+            .Where(IsCoreName)
+            .ToList();
+
+        foreach (var key in coreKeys)
+            packages.Remove(key);
+
+        // Every remaining key is a package name.
         var packageNames = packages
             .Select(p => p.Key)
             .Where(k => !string.IsNullOrWhiteSpace(k))
             .ToList();
 
         if (packageNames.Count == 0)
-            return (workflowJson, missing);
+            return (coreKeys.Count > 0 ? root.ToJsonString() : workflowJson, missing);
 
         var found = await _db.Packages.AsNoTracking()
             .Where(p => packageNames.Contains(p.Name))
@@ -249,16 +320,37 @@ public class WorkflowExecutionController : ControllerBase
     private static JsonElement? ParseJson(string? json) =>
         string.IsNullOrWhiteSpace(json) ? null : JsonSerializer.Deserialize<JsonElement>(json);
 
+    /// <summary>Counts every action in the workflow, including those nested in Body / Then / Else / Catch.</summary>
     private static int CountActions(JsonElement workflow)
     {
         if (workflow.ValueKind != JsonValueKind.Object) return 0;
 
         foreach (var property in workflow.EnumerateObject())
         {
-            if (property.Name.Equals("Actions", StringComparison.OrdinalIgnoreCase) &&
-                property.Value.ValueKind == JsonValueKind.Object)
-                return property.Value.EnumerateObject().Count();
+            if (property.Name.Equals("Actions", StringComparison.OrdinalIgnoreCase))
+                return CountActionList(property.Value);
         }
         return 0;
+    }
+
+    /// <summary>Accepts the new array form and the legacy {"1": {...}, "2": {...}} object form.</summary>
+    private static int CountActionList(JsonElement list) => list.ValueKind switch
+    {
+        JsonValueKind.Array  => list.EnumerateArray().Sum(CountActionNode),
+        JsonValueKind.Object => list.EnumerateObject().Sum(p => CountActionNode(p.Value)),
+        _ => 0
+    };
+
+    private static int CountActionNode(JsonElement action)
+    {
+        if (action.ValueKind != JsonValueKind.Object) return 0;
+
+        var count = 1;
+        foreach (var property in action.EnumerateObject())
+        {
+            if (BlockProperties.Any(b => b.Equals(property.Name, StringComparison.OrdinalIgnoreCase)))
+                count += CountActionList(property.Value);
+        }
+        return count;
     }
 }

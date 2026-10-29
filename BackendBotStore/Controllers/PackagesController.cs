@@ -3,10 +3,32 @@ using System.Text.Json;
 using BackendBotStore.Data;
 using BackendBotStore.DTOs;
 using BackendBotStore.Entities;
+using BackendBotStore.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace BackendBotStore.Controllers;
+
+/// <summary>One action as returned by GET api/Packages (DB packages and the built-in Core package share this shape).</summary>
+public sealed record PackageActionView(
+    int Id,
+    int PackageId,
+    string Name,
+    string? Description,
+    Dictionary<string, string> Inputs,
+    Dictionary<string, string> Outputs,
+    string[] Blocks,          // child action lists the designer should render: Then / Else / Body / Catch
+    bool HasCondition);       // true when the action takes a "Condition" (If, While)
+
+/// <summary>One package as returned by GET api/Packages.</summary>
+public sealed record PackageView(
+    int Id,
+    string Name,
+    string Version,
+    string? FilePath,
+    List<string> Dependencies,
+    bool IsBuiltIn,
+    List<PackageActionView> Actions);
 
 [ApiController]
 [Route("api/[controller]")]
@@ -34,34 +56,67 @@ public class PackagesController : ControllerBase
             "Packages");
     }
 
-    // GET: api/Packages
+    // GET: api/Packages            -> built-in Core package first, then the uploaded packages
+    // GET: api/Packages?includeCore=false -> uploaded packages only
     [HttpGet]
-    public async Task<IActionResult> GetPackages()
+    public async Task<IActionResult> GetPackages(
+        [FromQuery] bool includeCore = true,
+        CancellationToken cancellationToken = default)
     {
-        var packages = await _context.Packages
+        var entities = await _context.Packages
             .AsNoTracking()
             .Include(p => p.Actions)
-            .Select(p => new
-            {
+            .ToListAsync(cancellationToken);
+
+        var result = entities
+            .Select(p => new PackageView(
                 p.Id,
                 p.Name,
                 p.Version,
                 p.FilePath,
                 p.Dependencies,
+                IsBuiltIn: false,
+                Actions: p.Actions
+                    .Select(a => new PackageActionView(
+                        a.Id,
+                        a.PackageId,
+                        a.Name,
+                        Description: null,
+                        a.Inputs,
+                        a.Outputs,
+                        Blocks: Array.Empty<string>(),
+                        HasCondition: false))
+                    .ToList()))
+            .ToList();
 
-                Actions = p.Actions.Select(a => new
-                {
-                    a.Id,
-                    a.PackageId,
-                    a.Name,
-                    a.Inputs,
-                    a.Outputs
-                }).ToList()
-            })
-            .ToListAsync();
+        if (includeCore)
+            result.Insert(0, BuildCorePackage());
 
-        return Ok(packages);
+        return Ok(result);
     }
+
+    /// <summary>
+    /// The built-in control actions as a virtual package. It is not stored in the database:
+    /// Id 0 and negative action ids mark it as virtual so they never clash with real rows.
+    /// </summary>
+    private static PackageView BuildCorePackage() => new(
+        Id: 0,
+        Name: CoreActionCatalog.PackageName,
+        Version: CoreActionCatalog.Version,
+        FilePath: null,
+        Dependencies: new List<string>(),
+        IsBuiltIn: true,
+        Actions: CoreActionCatalog.Actions
+            .Select((a, i) => new PackageActionView(
+                -(i + 1),
+                0,
+                a.Name,
+                a.Description,
+                a.Inputs,
+                a.Outputs,
+                a.Blocks,
+                a.HasCondition))
+            .ToList());
 
     // POST: api/Packages/upload
     [HttpPost("upload")]
@@ -146,6 +201,14 @@ public class PackagesController : ControllerBase
             {
                 return BadRequest(
                     "PackageName must be a valid DLL filename, e.g. Excel.dll.");
+            }
+
+            // "Core" is reserved for the executor's built-in control actions.
+            if (CoreActionCatalog.IsCoreName(
+                    Path.GetFileNameWithoutExtension(dto.PackageName)))
+            {
+                return BadRequest(
+                    $"'{CoreActionCatalog.PackageName}' is a reserved package name.");
             }
 
             if (dto.Actions == null || dto.Actions.Count == 0)
