@@ -1,0 +1,283 @@
+<!-- Recursive lane: renders a vertical list of action cards; containers nest this template for each block. -->
+<ng-template #lane let-nodes let-parent="parentUid" let-block="block">
+  <div class="lane">
+    @if (nodes.length === 0) {
+      <button type="button" class="empty" (click)="openPicker(parent, block, 0)">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="P.plus" /></svg> Add an action
+      </button>
+    } @else {
+      <div class="gap">
+        <button type="button" class="plus" title="Insert an action" aria-label="Insert an action" (click)="openPicker(parent, block, 0)">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="P.plus" /></svg>
+        </button>
+      </div>
+
+      @for (n of nodes; track n.uid; let i = $index) {
+        <article class="card" [class.selected]="selectedUid() === n.uid" [class.split]="blockKeys(n).length > 1" [style.--accent]="colorOf(n)">
+          <div class="card-head" tabindex="0" (click)="select(n.uid)" (keydown.enter)="select(n.uid)">
+            <span class="tile"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="iconPath(icon(n))" /></svg></span>
+            <div class="titles">
+              <strong>{{ title(n) }}</strong>
+              @if (summary(n); as s) { <span>{{ s }}</span> }
+            </div>
+
+            @if (runState()[n.uid]; as r) {
+              <span class="status" [class]="r.status" [title]="r.message ?? r.status">
+                @switch (r.status) {
+                  @case ('ok') { <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="P.check" /></svg> }
+                  @case ('error') { <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="P.close" /></svg> }
+                  @default { … }
+                }
+              </span>
+            }
+
+            <div class="tools" (click)="$event.stopPropagation()">
+              <button type="button" title="Move up" aria-label="Move up" [disabled]="i === 0" (click)="moveNode(n.uid, -1)">
+                <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="P.up" /></svg>
+              </button>
+              <button type="button" title="Move down" aria-label="Move down" [disabled]="i === nodes.length - 1" (click)="moveNode(n.uid, 1)">
+                <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="P.down" /></svg>
+              </button>
+              <button type="button" title="Duplicate" aria-label="Duplicate" (click)="duplicateNode(n.uid)">
+                <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="P.copy" /></svg>
+              </button>
+              <button type="button" title="Delete" aria-label="Delete" (click)="removeNode(n.uid)">
+                <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="P.trash" /></svg>
+              </button>
+            </div>
+          </div>
+
+          @if (blockKeys(n).length) {
+            <div class="blocks">
+              @for (b of blockKeys(n); track b) {
+                <section class="block">
+                  @if (label(n, b); as l) { <div class="block-label">{{ l }}</div> }
+                  <ng-container *ngTemplateOutlet="lane; context: { $implicit: n.blocks[b], parentUid: n.uid, block: b }" />
+                </section>
+              }
+            </div>
+          }
+        </article>
+
+        <div class="gap">
+          <button type="button" class="plus" title="Insert an action" aria-label="Insert an action" (click)="openPicker(parent, block, i + 1)">
+            <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="P.plus" /></svg>
+          </button>
+        </div>
+      }
+    }
+  </div>
+</ng-template>
+
+<!-- ============================ Top bar ============================ -->
+<header class="topbar">
+  <div class="brand">
+    <span class="logo"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="P.bolt" /></svg></span>
+    <input class="flow-name" aria-label="Flow name" [ngModel]="flowName()" (ngModelChange)="flowName.set($event)" />
+    <span class="ver">v{{ version() }}</span>
+  </div>
+  <div class="actions">
+    @if (notice(); as n) { <span class="notice" role="status">{{ n }}</span> }
+    <button type="button" class="btn" [class.on]="panel() === 'variables'" (click)="closePanel()">Variables</button>
+    <button type="button" class="btn" [class.on]="panel() === 'json'" (click)="panel.set('json')">JSON</button>
+    <button type="button" class="btn" (click)="file.click()">Import</button>
+    <input #file type="file" hidden accept=".json,application/json" (change)="importFile($event); file.value = ''" />
+    <button type="button" class="btn" (click)="exportFile()">Export</button>
+    <button type="button" class="btn primary" (click)="save()">Save</button>
+  </div>
+</header>
+
+<div class="body">
+  <!-- ============================ Canvas ============================ -->
+  <main class="canvas" (click)="onCanvasClick($event)">
+    <div class="flow">
+      @if (loading()) { <div class="banner" role="status">Loading packages…</div> }
+      @if (loadError(); as err) {
+        <div class="banner error" role="alert">{{ err }} <button type="button" class="link" (click)="loadPackages()">Retry</button></div>
+      }
+
+      <div class="trigger">
+        <span class="tile"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="P.bolt" /></svg></span>
+        <div><strong>Manually trigger the flow</strong><span>Starts when the flow is run</span></div>
+      </div>
+
+      <ng-container *ngTemplateOutlet="lane; context: { $implicit: steps(), parentUid: null, block: 'root' }" />
+      <div class="end">End of flow</div>
+    </div>
+  </main>
+
+  <!-- ============================ Details panel ============================ -->
+  <aside class="panel" aria-label="Details">
+    @switch (panel()) {
+      @case ('picker') {
+        <div class="panel-head">
+          <h2>Add an action</h2>
+          <button type="button" class="icon-btn" aria-label="Close" (click)="closePanel()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="P.close" /></svg></button>
+        </div>
+        <input class="search" type="search" placeholder="Search actions" aria-label="Search actions" [ngModel]="search()" (ngModelChange)="search.set($event)" />
+        <div class="scroll">
+          @for (g of filteredCatalog(); track g.name) {
+            <h3 class="grp"><span class="dot" [style.background]="g.color"></span>{{ g.name }}</h3>
+            @for (it of g.items; track it.pkg.name + it.def.name) {
+              <button type="button" class="pick" [style.--accent]="g.color" (click)="addAction(it.pkg, it.def)">
+                <span class="tile">
+                  <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="iconPath(icon({ functionName: it.def.name, packageName: it.pkg.name }))" /></svg>
+                </span>
+                <span class="pick-text"><strong>{{ friendly(it.def.name) }}</strong><span>{{ it.def.description || it.pkg.name }}</span></span>
+              </button>
+            }
+          } @empty {
+            <p class="hint">No actions match your search.</p>
+          }
+        </div>
+      }
+
+      @case ('action') {
+        @if (selected(); as node) {
+          <div class="panel-head">
+            <span class="tile sm" [style.--accent]="colorOf(node)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="iconPath(icon(node))" /></svg></span>
+            <input class="label-input" aria-label="Action name" [placeholder]="friendly(node.functionName)" [ngModel]="node.label" (ngModelChange)="patchNode(node.uid, { label: $event })" />
+            <button type="button" class="icon-btn" aria-label="Close" (click)="closePanel()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="P.close" /></svg></button>
+          </div>
+
+          <div class="tabs" role="tablist">
+            <button type="button" role="tab" [attr.aria-selected]="tab() === 'params'" [class.on]="tab() === 'params'" (click)="tab.set('params')">Parameters</button>
+            <button type="button" role="tab" [attr.aria-selected]="tab() === 'test'" [class.on]="tab() === 'test'" (click)="tab.set('test')">Test</button>
+          </div>
+
+          <div class="scroll">
+            @if (tab() === 'params') {
+              @if (node.conditions.length || selectedDef()?.hasCondition) {
+                <h3 class="grp">Condition</h3>
+                @for (row of node.conditions; track $index; let i = $index) {
+                  @if (i > 0) {
+                    <select class="logic" aria-label="Combine with" [ngModel]="row.logical" (ngModelChange)="setCondition(node.uid, i, { logical: $event })">
+                      <option value="AND">and</option>
+                      <option value="OR">or</option>
+                    </select>
+                  }
+                  <div class="cond">
+                    <div class="field-row">
+                      <input aria-label="Left value" placeholder="Choose a value" [ngModel]="row.left" (ngModelChange)="setCondition(node.uid, i, { left: $event })" />
+                      <select class="fx" aria-label="Insert variable" (change)="insertCondVar(i, 'left', $any($event.target))">
+                        <option value="">Variable</option>
+                        @for (v of variables(); track v.name) { <option [value]="v.name">{{ v.name }}</option> }
+                      </select>
+                    </div>
+                    <select aria-label="Operator" [ngModel]="row.operator" (ngModelChange)="setCondition(node.uid, i, { operator: $event })">
+                      @for (op of operators(); track op) { <option [value]="op">{{ opLabel(op) }}</option> }
+                    </select>
+                    @if (!isUnary(row.operator)) {
+                      <div class="field-row">
+                        <input aria-label="Right value" placeholder="Choose a value" [ngModel]="row.right" (ngModelChange)="setCondition(node.uid, i, { right: $event })" />
+                        <select class="fx" aria-label="Insert variable" (change)="insertCondVar(i, 'right', $any($event.target))">
+                          <option value="">Variable</option>
+                          @for (v of variables(); track v.name) { <option [value]="v.name">{{ v.name }}</option> }
+                        </select>
+                      </div>
+                    }
+                    @if (node.conditions.length > 1) {
+                      <button type="button" class="link danger" (click)="removeCondition(node.uid, i)">Remove row</button>
+                    }
+                  </div>
+                }
+                @if (canAddCondition()) { <button type="button" class="link" (click)="addCondition(node.uid)">Add row</button> }
+              }
+
+              @if (inputKeys().length) {
+                <h3 class="grp">Inputs</h3>
+                @for (key of inputKeys(); track key) {
+                  <label class="field">
+                    <span>{{ key }} <em>{{ inputType(key) }}</em></span>
+                    <span class="field-row">
+                      @if (isMultiline(key)) {
+                        <textarea rows="3" [ngModel]="node.inputs[key] ?? ''" (ngModelChange)="setInput(node.uid, key, $event)"></textarea>
+                      } @else {
+                        <input [ngModel]="node.inputs[key] ?? ''" (ngModelChange)="setInput(node.uid, key, $event)" />
+                      }
+                      <select class="fx" aria-label="Insert variable" (change)="insertVar(key, $any($event.target))">
+                        <option value="">Variable</option>
+                        @for (v of variables(); track v.name) { <option [value]="v.name">{{ v.name }}</option> }
+                      </select>
+                    </span>
+                  </label>
+                }
+              }
+
+              @if (outputKeys().length) {
+                <h3 class="grp">Save results to</h3>
+                @for (key of outputKeys(); track key) {
+                  <label class="field">
+                    <span>{{ key }}</span>
+                    <select [ngModel]="node.outputs[key] ?? ''" (ngModelChange)="setOutput(node.uid, key, $event)">
+                      <option value="">Don't save</option>
+                      @for (v of variables(); track v.name) { <option [value]="v.name">{{ v.name }}</option> }
+                    </select>
+                  </label>
+                }
+              }
+
+              @if (!inputKeys().length && !outputKeys().length && !node.conditions.length) {
+                <p class="hint">This action has no parameters.</p>
+              }
+              <button type="button" class="btn danger wide" (click)="removeNode(node.uid)">Delete action</button>
+            } @else {
+              @if (!selectedPackage()?.filePath) {
+                <p class="hint">Core actions are interpreted by the flow engine, so they can't be run on their own. They run as part of the full flow.</p>
+              } @else {
+                <p class="hint">Variables use the default values from the Variables panel.</p>
+                <h3 class="grp">Request</h3>
+                <pre>{{ requestJson() }}</pre>
+                <button type="button" class="btn primary wide" [disabled]="runState()[node.uid]?.status === 'running'" (click)="runNode(node.uid)">
+                  <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="P.flask" /></svg> Run this action
+                </button>
+                @if (runState()[node.uid]; as run) {
+                  <div class="result" [class]="run.status" role="status">
+                    <strong>{{ run.status === 'running' ? 'Running…' : run.message }}</strong>
+                    @if (looksLikePathError(run.message)) {
+                      <p>The server rejected this package path. Check the allowed package directory configured for the Execution API.</p>
+                    }
+                    @if (run.response) { <pre>{{ responseJson(run.response) }}</pre> }
+                  </div>
+                }
+              }
+            }
+          </div>
+        }
+      }
+
+      @case ('json') {
+        <div class="panel-head"><h2>Flow JSON</h2><button type="button" class="btn" (click)="copyJson()">Copy</button></div>
+        <div class="scroll"><pre class="json">{{ jsonText() }}</pre></div>
+      }
+
+      @default {
+        <div class="panel-head">
+          <h2>Variables</h2>
+          <button type="button" class="btn" (click)="addVariable()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="P.plus" /></svg> New</button>
+        </div>
+        <div class="scroll">
+          @for (v of variables(); track $index; let i = $index) {
+            <div class="var">
+              <div class="field-row">
+                <input aria-label="Variable name" [class.invalid]="duplicateName(v.name)" [ngModel]="v.name" (ngModelChange)="updateVariable(i, { name: $event })" />
+                <select aria-label="Type" [ngModel]="v.type" (ngModelChange)="updateVariable(i, { type: $event })">
+                  @for (t of valueTypes; track t) { <option [value]="t">{{ t }}</option> }
+                </select>
+                <button type="button" class="icon-btn" aria-label="Delete variable" (click)="removeVariable(i)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="P.trash" /></svg></button>
+              </div>
+              <input aria-label="Default value" placeholder="Default value" [ngModel]="v.valueText" (ngModelChange)="updateVariable(i, { valueText: $event })" />
+              <div class="checks">
+                <label><input type="checkbox" [ngModel]="v.input" (ngModelChange)="updateVariable(i, { input: $event })" /> Input</label>
+                <label><input type="checkbox" [ngModel]="v.output" (ngModelChange)="updateVariable(i, { output: $event })" /> Output</label>
+                @if (duplicateName(v.name)) { <span class="err">Name is already used</span> }
+              </div>
+            </div>
+          } @empty {
+            <p class="hint">No variables yet. Add one to use it in conditions, loops and action inputs.</p>
+          }
+        </div>
+      }
+    }
+  </aside>
+</div>

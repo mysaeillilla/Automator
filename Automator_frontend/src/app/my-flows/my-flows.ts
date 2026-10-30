@@ -35,7 +35,7 @@ interface WorkflowExecutionResponse {
 
 @Component({
   selector: 'app-my-flows',
-  imports: [DatePipe, RouterLink],
+  imports: [DatePipe],
   styleUrl: './my-flows.css',
   templateUrl: './my-flows.html',
 })
