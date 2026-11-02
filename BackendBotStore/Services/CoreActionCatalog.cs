@@ -99,6 +99,8 @@ public sealed class CoreCatalog : ICoreCatalog
         new BuiltInCoreContributor().Contribute(this);
         foreach (var contributor in contributors)
             contributor.Contribute(this);
+
+            
     }
 
     public IReadOnlyList<CoreActionInfo> Actions { get { lock (_gate) return _actionSnapshot; } }
@@ -207,10 +209,105 @@ private static readonly string[] LogicalOperators =
         {
             Coerce = v => WorkflowExecutor.ToBool(v)
         });
-        catalog.RegisterVariableType(new("LIST", "Ordered list of values."));
-        catalog.RegisterVariableType(new("DICTIONARY", "Key / value pairs."));
-        catalog.RegisterVariableType(new("DATATABLE", "Rows and columns."));
-        catalog.RegisterVariableType(new("ANY", "Any value; no coercion."));
+
+        // ── Variable actions ──
+
+catalog.RegisterAction(new(
+    "Variable.Create",
+    "Creates a new workflow variable.",
+    new()
+    {
+        ["Name"] = "STRING",
+        ["Type"] = "STRING",
+        ["Value"] = "ANY"
+    },
+    new()
+    {
+        ["Result"] = "ANY"
+    },
+    Array.Empty<string>(),
+    false)
+{
+    Category = "Variables"
+});
+
+catalog.RegisterAction(new(
+    "Variable.Set",
+    "Assigns a value to an existing variable.",
+    new()
+    {
+        ["Name"] = "STRING",
+        ["Value"] = "ANY"
+    },
+    new()
+    {
+        ["Result"] = "ANY"
+    },
+    Array.Empty<string>(),
+    false)
+{
+    Category = "Variables"
+});
+
+catalog.RegisterAction(new(
+    "Variable.Convert",
+    "Converts a value to the specified variable type.",
+    new()
+    {
+        ["Value"] = "ANY",
+        ["TargetType"] = "STRING"
+    },
+    new()
+    {
+        ["Result"] = "ANY"
+    },
+    Array.Empty<string>(),
+    false)
+{
+    Category = "Variables"
+});
+        // catalog.RegisterVariableType(new("LIST", "Ordered list of values."));
+        // catalog.RegisterVariableType(new("DICTIONARY", "Key / value pairs."));
+        // catalog.RegisterVariableType(new("DATATABLE", "Rows and columns."));
+        // catalog.RegisterVariableType(new("ANY", "Any value; no coercion."));
+
+
+
+        // ── Variable types ──
+
+catalog.RegisterVariableType(new("STRING", "Text.")
+{
+    Coerce = v => VariableValueConverter.Convert(v, "STRING")
+});
+
+catalog.RegisterVariableType(new("NUMBER", "Integer or decimal number.")
+{
+    Coerce = v => VariableValueConverter.Convert(v, "NUMBER")
+});
+
+catalog.RegisterVariableType(new("JSON", "JSON object or array.")
+{
+    Coerce = v => VariableValueConverter.Convert(v, "JSON")
+});
+
+catalog.RegisterVariableType(new("DATATABLE", "Table containing rows and columns.")
+{
+    Coerce = v => VariableValueConverter.Convert(v, "DATATABLE")
+});
+
+catalog.RegisterVariableType(new("ROW", "Single row of a DataTable.")
+{
+    Coerce = v => VariableValueConverter.Convert(v, "ROW")
+});
+
+catalog.RegisterVariableType(new("BOOLEAN", "True or false.")
+{
+    Coerce = v => VariableValueConverter.Convert(v, "BOOLEAN")
+});
+
+// Internal wildcard type for action inputs and outputs.
+// Do not expose as a user-creatable variable type.
+catalog.RegisterVariableType(new("ANY", "Any runtime value."));
 
 
 
@@ -268,10 +365,23 @@ private static readonly string[] LogicalOperators =
 
    
 
-        catalog.RegisterAction(new("ForEach", "Loops over a list, dictionary, data table or JSON array/object.",
-            new() { ["Collection"] = "ANY" },
-            new() { ["Item"] = "ANY", ["Index"] = "NUMBER", ["Key"] = "ANY" },
-            new[] { "Body" }, false));
+        catalog.RegisterAction(new(
+    "ForEachRow",
+    "Iterates through each row of a DataTable.",
+    new()
+    {
+        ["Table"] = "DATATABLE"
+    },
+    new()
+    {
+        ["Item"] = "ROW",
+        ["Index"] = "NUMBER"
+    },
+    new[] { "Body" },
+    false)
+{
+    Category = "ControlFlow"
+});
 
         catalog.RegisterAction(new("ForCount", "Loops from From to To (inclusive) by Step.",
             new() { ["From"] = "NUMBER", ["To"] = "NUMBER", ["Step"] = "NUMBER" },

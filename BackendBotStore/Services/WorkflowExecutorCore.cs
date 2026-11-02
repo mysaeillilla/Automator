@@ -25,21 +25,21 @@ public sealed class WorkflowDefinition
     public List<WorkflowAction> Actions { get; set; } = new();
 }
 
-public sealed class WorkflowVariable
-{
-    /// <summary>Plain .NET value (string, long, double, bool, List, Dictionary, or any object set by an action).</summary>
-    public object? Value { get; set; }
+// public sealed class WorkflowVariable
+// {
+//     /// <summary>Plain .NET value (string, long, double, bool, List, Dictionary, or any object set by an action).</summary>
+//     public object? Value { get; set; }
 
-    /// <summary>
-    /// Declared type: a name registered in ICoreCatalog.VariableTypes
-    /// ("STRING" | "NUMBER" | "BOOLEAN" | "LIST" | "DICTIONARY" | "DATATABLE" | "ANY" | ...),
-    /// or an object describing a structure (kept raw, not coerced).
-    /// </summary>
-    public JsonElement Type { get; set; }
+//     /// <summary>
+//     /// Declared type: a name registered in ICoreCatalog.VariableTypes
+//     /// ("STRING" | "NUMBER" | "BOOLEAN" | "LIST" | "DICTIONARY" | "DATATABLE" | "ANY" | ...),
+//     /// or an object describing a structure (kept raw, not coerced).
+//     /// </summary>
+//     public JsonElement Type { get; set; }
 
-    public bool Input { get; set; }
-    public bool Output { get; set; }
-}
+//     public bool Input { get; set; }
+//     public bool Output { get; set; }
+// }
 
 public sealed class WorkflowAction
 {
@@ -416,7 +416,45 @@ public class WorkflowExecutor
         exit = flow == Flow.Return ? Flow.Return : Flow.Next;   // Break is consumed by the loop
         return flow is Flow.Break or Flow.Return;               // Continue / Next -> keep looping
     }
+private async Task ExecuteForEachRowAsync(
+    WorkflowNode node,
+    ExecutionContext context,
+    CancellationToken ct)
+{
+    var inputs = ResolveInputs(node, context);
 
+    if (!inputs.TryGetValue("Table", out var input))
+        throw new InvalidOperationException(
+            "ForEachRow requires a Table input.");
+
+    if (input is not DataTable table)
+        throw new InvalidOperationException(
+            "ForEachRow expects a DATATABLE variable.");
+
+    for (int i = 0; i < table.Rows.Count; i++)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        DataRow currentRow = table.Rows[i];
+
+        context.Variables.Set(
+            "CurrentItem",
+            currentRow,
+            "ROW");
+
+        context.Variables.Set(
+            "LoopIndex",
+            i,
+            "NUMBER");
+
+        // Execute child actions inside the Body block.
+        await ExecuteBlockAsync(
+            node,
+            "Body",
+            context,
+            ct);
+    }
+}
     private Flow ExecuteForEach(string id, WorkflowAction a, Dictionary<string, object?> inputs)
     {
         var items = Enumerate(inputs.GetValueOrDefault("Collection"));   // snapshot: safe if the body mutates the source

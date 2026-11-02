@@ -6,6 +6,7 @@ using Npgsql;
 var builder = WebApplication.CreateBuilder(args);
    builder.Services.AddTransient<WorkflowExecutor>();
    builder.Services.AddSingleton<WorkflowRunner>();
+   builder.Services.AddScoped<WorkflowVariableInitializer>();
 // Add services to the container.
 const string AngularPolicy = "AngularApp";
 
@@ -16,6 +17,8 @@ builder.Services.AddCors(options =>
               .AllowAnyHeader()
               .AllowAnyMethod());
 });
+
+
 builder.Services.AddControllers();
 builder.Services.AddCoreCatalog();
 // Configure CORS
