@@ -411,4 +411,59 @@ public async Task<IActionResult> GetPackages(
             }
         }
     }
+
+
+
+    // DELETE: api/Packages/{id}
+[HttpDelete("{id:int}")]
+public async Task<IActionResult> DeletePackage(
+    int id,
+    CancellationToken cancellationToken)
+{
+    // Prevent deletion of the built-in Core package
+    if (id <= 0)
+        return BadRequest("Built-in packages cannot be deleted.");
+
+    // Find package along with its actions
+    var package = await _context.Packages
+        .Include(p => p.Actions)
+        .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+
+    if (package == null)
+        return NotFound($"Package with ID {id} was not found.");
+
+    try
+    {
+        // Delete package directory (DLL and dependencies)
+        if (!string.IsNullOrWhiteSpace(package.FilePath))
+        {
+            var packageDirectory = Path.GetDirectoryName(package.FilePath);
+
+            if (!string.IsNullOrWhiteSpace(packageDirectory) &&
+                Directory.Exists(packageDirectory))
+            {
+                Directory.Delete(packageDirectory, recursive: true);
+            }
+        }
+
+        // Delete package and associated actions
+        _context.Packages.Remove(package);
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return Ok(new
+        {
+            Message = "Package deleted successfully.",
+            package.Id,
+            package.Name,
+            package.Version
+        });
+    }
+    catch (IOException ex)
+    {
+        return StatusCode(
+            StatusCodes.Status500InternalServerError,
+            $"Error deleting package files: {ex.Message}");
+    }
+}
 }

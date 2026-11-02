@@ -1,0 +1,62 @@
+{
+  "PackageName": "DialogueBox.dll",
+  "Version": "3.0.0",
+  "Dependencies": "",
+  "Actions": [
+    {
+      "ActionName": "ShowInputDialog",
+      "Inputs": {
+        "title": "STRING",
+        "message": "STRING",
+        "defaultValue": "STRING"
+      },
+      "Outputs": {
+        "Response": "STRING"
+      }
+    },
+    {
+      "ActionName": "ShowSelectDateDialog",
+      "Inputs": {
+        "title": "STRING",
+        "message": "STRING",
+        "defaultDate": "DATETIME"
+      },
+      "Outputs": {
+        "Response": "DATETIME"
+      }
+    },
+    {
+      "ActionName": "ShowSelectFromListDialog",
+      "Inputs": {
+        "title": "STRING",
+        "message": "STRING",
+        "items": "LIST",
+        "allowMultiple": "BOOLEAN"
+      },
+      "Outputs": {
+        "Response": "LIST"
+      }
+    },
+    {
+      "ActionName": "ShowSelectFileDialog",
+      "Inputs": {
+        "title": "STRING",
+        "filter": "STRING",
+        "initialDirectory": "STRING"
+      },
+      "Outputs": {
+        "Response": "STRING"
+      }
+    },
+    {
+      "ActionName": "ShowSelectFolderDialog",
+      "Inputs": {
+        "title": "STRING",
+        "initialDirectory": "STRING"
+      },
+      "Outputs": {
+        "Response": "STRING"
+      }
+    }
+  ]
+}

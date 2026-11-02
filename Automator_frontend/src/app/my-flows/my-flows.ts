@@ -173,7 +173,7 @@ private router = inject(Router);
     console.log('Edit workflow:', flow);
     alert(`Edit Flow clicked for "${flow.name}" (ID: ${flow.id}).`);
 
-    this.router.navigate(['/myflows', flow.id]);
+    this.router.navigate(['/myflows2', flow.id]);
   }
 
   private toMessage(err: HttpErrorResponse): string {

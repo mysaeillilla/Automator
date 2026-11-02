@@ -39,7 +39,7 @@ export class SideBar {
   }
 
   readonly mainItems: NavItem[] = [
-    { id: 'create', label: 'Create', route: '/createflow' },
+    { id: 'create', label: 'Create', route: '/myflows2' },
     { id: 'my-flows', label: 'My Flows', route: '/myflows' },
     { id: 'packages', label: 'Packages', route: '/packages' },
     { id: 'history', label: 'History', route: '/history' },
@@ -57,7 +57,7 @@ export class SideBar {
 
   private updateSidebarState(url: string): void {
     const isCreateFlowRoute =
-      url === '/createflow' || url.startsWith('/createflow/');
+      url === '/createflow' || url.startsWith('/createflow/')|| url.startsWith('/myflows2')|| url.startsWith('/myflows2/');
 
     this.collapsed.set(isCreateFlowRoute);
   }

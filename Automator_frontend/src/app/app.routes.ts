@@ -4,6 +4,7 @@ import { Activity } from './activity/activity';
 import { MyFlows } from './my-flows/my-flows';
 import { FlowBuilderComponent } from './flow-builder/flow-builder';
 import { CreateNewFlow } from './create-new-flow/create-new-flow';
+import { Workflow } from './workflow/workflow';
 
 export const routes: Routes = [
 
@@ -14,6 +15,8 @@ export const routes: Routes = [
   { path: 'createflow', component: FlowBuilderComponent },
   { path: 'myflows/:id', component: FlowBuilderComponent },
   { path: 'myflows1', component: CreateNewFlow },
+  { path: 'myflows2', component: Workflow },
+  { path: 'myflows2/:id', component: Workflow },
 
 {
   path: 'my-flows/:id',

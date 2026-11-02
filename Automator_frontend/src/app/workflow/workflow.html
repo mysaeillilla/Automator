@@ -1,0 +1,293 @@
+<div class="app">
+
+  <div class="toolbar">
+    <button (click)="goback()">Back</button>
+
+    <button class="primary" (click)="upload()" [disabled]="uploading() || !actionCount()">
+      {{ uploading() ? 'Uploading…' : 'Upload' }}
+    </button>
+    <button (click)="showJson.set(true)">View JSON</button>
+    <button (click)="openImport()">Import JSON</button>
+
+      <input class="title-input" aria-label="Flow name"
+           [ngModel]="flowName()" (ngModelChange)="flowName.set($event)" />
+
+  </div>
+
+  <div class="body">
+    <!-- ================= Actions pane ================= -->
+    <aside class="pane left">
+      <div class="pane-title">
+        <span>Actions</span>
+        <button class="icon" title="Reload packages" (click)="loadPackages()">↻</button>
+      </div>
+      <input class="search" placeholder="Search"
+             [ngModel]="paletteQuery()" (ngModelChange)="paletteQuery.set($event)" />
+      @if (packagesLoading()) { <p class="muted pad">Loading packages…</p> }
+      @if (packagesError()) { <p class="error pad">{{ packagesError() }}</p> }
+
+      <div class="groups">
+        @for (g of groups(); track g.name) {
+          <div class="group">
+            <button class="group-head" (click)="toggleGroup(g.name)">
+              <span class="chev">{{ isOpen(g.name) ? '▾' : '▸' }}</span>{{ g.name }}
+            </button>
+            @if (isOpen(g.name)) {
+              @for (a of g.actions; track a.name) {
+                <div class="palette-item" draggable="true"
+                     [title]="a.description || a.name"
+                     (dragstart)="onPaletteDragStart($event, g.name, a)"
+                     (dragend)="onDragEnd()"
+                     (dblclick)="addFromPalette(g.name, a)">
+                  <span class="badge" [class.flow]="a.category === 'ControlFlow'">{{ a.name.slice(0, 2) }}</span>
+                  {{ a.name }}
+                </div>
+              }
+            }
+          </div>
+        }
+      </div>
+    </aside>
+
+    <!-- ================= Flow canvas ================= -->
+    <main class="canvas" tabindex="0" (keydown.delete)="deleteSelected()" (click)="select(null)">
+      <ng-container [ngTemplateOutlet]="nodeList"
+                    [ngTemplateOutletContext]="{ nodes: actions(), owner: null, block: 'root' }" />
+      @if (!actionCount()) {
+        <div class="empty-hint">
+          <h3>You don't have any actions here yet</h3>
+          <p>Drag and drop actions to this pane, or double-click an action to add it.</p>
+        </div>
+      }
+    </main>
+
+    <!-- ================= Variables pane ================= -->
+    <aside class="pane right">
+      <div class="pane-title"><span>Variables</span></div>
+      <div class="var-tools">
+        <input class="search" placeholder="Search"
+               [ngModel]="varQuery()" (ngModelChange)="varQuery.set($event)" />
+        <button class="add" title="Create variable" (click)="newVariable()">+</button>
+      </div>
+      <div class="var-list">
+        @for (v of filteredVariables(); track v.name) {
+          <div class="var-item">
+            <div class="var-main">
+              <strong>{{ v.name }}</strong>
+              <span class="type">{{ v.type }}</span>
+              @if (v.input) { <span class="flag in">Input</span> }
+              @if (v.output) { <span class="flag out">Output</span> }
+            </div>
+            <div class="var-value" [title]="displayValue(v)">{{ displayValue(v) }}</div>
+            <div class="var-actions">
+              <button class="icon" title="Edit" (click)="editVariable(v)">✎</button>
+              <button class="icon" title="Delete" (click)="deleteVariable(v.name)">🗑</button>
+            </div>
+          </div>
+        } @empty {
+          <p class="muted pad">No variables yet. Use + to create one.</p>
+        }
+      </div>
+    </aside>
+  </div>
+
+
+</div>
+
+<!-- ================= Recursive action list ================= -->
+<ng-template #nodeList let-nodes="nodes" let-owner="owner" let-block="block">
+  @for (node of nodes; track node.uid; let i = $index) {
+    <div class="slot" [class.show]="dragging()" [class.active]="dropKey() === slotKey(owner, block, i)"
+         (dragover)="onSlotOver($event, owner, block, i)"
+         (drop)="onSlotDrop($event, owner, block, i)"></div>
+
+    <div class="node" [class.selected]="selectedUid() === node.uid">
+      <div class="node-head" draggable="true"
+           (dragstart)="onNodeDragStart($event, node)" (dragend)="onDragEnd()"
+           (click)="$event.stopPropagation(); select(node.uid)"
+           (dblclick)="openEditor(node)">
+        <span class="line">{{ lineNumbers().get(node.uid) }}</span>
+        <span class="badge" [class.flow]="node.def?.category === 'ControlFlow'">{{ node.fn.slice(0, 2) }}</span>
+        <span class="fn">{{ node.fn }}</span>
+        @if (!node.def) { <span class="warn" title="Action not found in loaded packages">⚠</span> }
+        <span class="summary">{{ summary(node) }}</span>
+        <span class="node-actions">
+          <button class="icon" title="Move up" (click)="$event.stopPropagation(); moveBy(node.uid, -1)">▲</button>
+          <button class="icon" title="Move down" (click)="$event.stopPropagation(); moveBy(node.uid, 1)">▼</button>
+          <button class="icon" title="Edit" (click)="$event.stopPropagation(); openEditor(node)">✎</button>
+          <button class="icon" title="Delete" (click)="$event.stopPropagation(); deleteNode(node.uid)">🗑</button>
+        </span>
+      </div>
+
+      @for (b of blockKeys(node); track b) {
+        <div class="block">
+          <div class="block-label">{{ b }}</div>
+          <div class="block-body">
+            <ng-container [ngTemplateOutlet]="nodeList"
+                          [ngTemplateOutletContext]="{ nodes: node.blocks[b], owner: node.uid, block: b }" />
+          </div>
+        </div>
+      }
+    </div>
+  }
+
+  <div class="slot end" [class.root]="block === 'root'" [class.empty]="!nodes.length"
+       [class.show]="dragging()" [class.active]="dropKey() === slotKey(owner, block, nodes.length)"
+       (dragover)="onSlotOver($event, owner, block, nodes.length)"
+       (drop)="onSlotDrop($event, owner, block, nodes.length)">
+    @if (!nodes.length && block !== 'root') { <span>Drop action here</span> }
+  </div>
+</ng-template>
+
+<!-- ================= Action editor dialog ================= -->
+@if (draft(); as d) {
+  <div class="overlay" (click)="draft.set(null)">
+    <div class="dialog" (click)="$event.stopPropagation()">
+      <h3>{{ d.node.fn }} <small>{{ d.node.pkg }}</small></h3>
+      @if (d.node.def?.description) { <p class="muted">{{ d.node.def?.description }}</p> }
+
+      @if (d.condition; as c) {
+        <fieldset>
+          <legend>Condition</legend>
+          <label>First operand
+            <div class="field">
+              <input [(ngModel)]="c.left" placeholder="{{ '{{variable}}' }}" />
+              <select (change)="appendVar(c, 'left', $any($event.target).value); $any($event.target).value = ''">
+                <option value="">{{ '{x}' }}</option>
+                @for (v of variables(); track v.name) { <option [value]="v.name">{{ v.name }}</option> }
+              </select>
+            </div>
+          </label>
+          <label>Operator
+            <select [(ngModel)]="c.operator">
+              @for (op of d.operators; track op) { <option [value]="op">{{ op }}</option> }
+            </select>
+          </label>
+          @if (needsRight(c.operator)) {
+            <label>Second operand
+              <div class="field">
+                <input [(ngModel)]="c.right" />
+                <select (change)="appendVar(c, 'right', $any($event.target).value); $any($event.target).value = ''">
+                  <option value="">{{ '{x}' }}</option>
+                  @for (v of variables(); track v.name) { <option [value]="v.name">{{ v.name }}</option> }
+                </select>
+              </div>
+            </label>
+          }
+        </fieldset>
+      }
+
+      @if (d.inputFields.length) {
+        <fieldset>
+          <legend>Input parameters</legend>
+          @for (f of d.inputFields; track f.key) {
+            <label>{{ f.key }} <small class="muted">({{ f.type }})</small>
+              <div class="field">
+                @if (f.long) {
+                  <textarea rows="3" [(ngModel)]="d.inputs[f.key]"></textarea>
+                } @else {
+                  <input [(ngModel)]="d.inputs[f.key]" />
+                }
+                <select (change)="appendVar(d.inputs, f.key, $any($event.target).value); $any($event.target).value = ''">
+                  <option value="">{{ '{x}' }}</option>
+                  @for (v of variables(); track v.name) { <option [value]="v.name">{{ v.name }}</option> }
+                </select>
+              </div>
+            </label>
+          }
+        </fieldset>
+      }
+
+      @if (d.outputKeys.length) {
+        <fieldset>
+          <legend>Produced variables</legend>
+          @for (k of d.outputKeys; track k) {
+            <label>{{ k }}
+              <select [(ngModel)]="d.outputs[k]">
+                <option value="">(none)</option>
+                @for (v of variables(); track v.name) { <option [value]="v.name">{{ v.name }}</option> }
+              </select>
+            </label>
+          }
+        </fieldset>
+      }
+
+      <div class="dialog-actions">
+        <button (click)="draft.set(null)">Cancel</button>
+        <button class="primary" (click)="saveEditor()">Save</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ================= Variable dialog ================= -->
+@if (varDraft(); as v) {
+  <div class="overlay" (click)="varDraft.set(null)">
+    <div class="dialog small" (click)="$event.stopPropagation()">
+      <h3>{{ v.editing ? 'Edit variable' : 'Create variable' }}</h3>
+      <label>Name
+        <input [(ngModel)]="v.name" [disabled]="v.editing" />
+      </label>
+      <label>Type
+        <select [(ngModel)]="v.type">
+          @for (t of varTypes; track t) { <option [value]="t">{{ t }}</option> }
+        </select>
+      </label>
+      <label>Default value
+        <textarea rows="3" [(ngModel)]="v.valueText"
+                  placeholder="Lists/objects as JSON, e.g. [1,2,3]"></textarea>
+      </label>
+      <label class="check"><input type="checkbox" [(ngModel)]="v.input" /> Use as input</label>
+      <label class="check"><input type="checkbox" [(ngModel)]="v.output" /> Use as output</label>
+      @if (varError()) { <p class="error">{{ varError() }}</p> }
+      <div class="dialog-actions">
+        <button (click)="varDraft.set(null)">Cancel</button>
+        <button class="primary" (click)="saveVariable()">Save</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ================= JSON preview ================= -->
+@if (showJson()) {
+  <div class="overlay" (click)="showJson.set(false)">
+    <div class="dialog wide" (click)="$event.stopPropagation()">
+      <h3>Workflow JSON</h3>
+      <pre class="json">{{ workflowText() }}</pre>
+      <div class="dialog-actions">
+        <button (click)="copyJson()">Copy</button>
+        <button class="primary" (click)="showJson.set(false)">Close</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ================= Import ================= -->
+@if (importOpen()) {
+  <div class="overlay" (click)="importOpen.set(false)">
+    <div class="dialog wide" (click)="$event.stopPropagation()">
+      <h3>Import workflow JSON</h3>
+      <textarea class="json-input" rows="16"
+                [ngModel]="importText()" (ngModelChange)="importText.set($event)"
+                placeholder="Paste a workflow JSON here"></textarea>
+      @if (importError()) { <p class="error">{{ importError() }}</p> }
+      <div class="dialog-actions">
+        <button (click)="importOpen.set(false)">Cancel</button>
+        <button class="primary" (click)="importWorkflow()" [disabled]="!importText().trim()">Import</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ================= Upload result ================= -->
+@if (uploadResult(); as r) {
+  <div class="overlay" (click)="uploadResult.set(null)">
+    <div class="dialog wide" (click)="$event.stopPropagation()">
+      <h3 [class.error]="!r.ok">{{ r.ok ? 'Upload succeeded' : 'Upload failed' }}</h3>
+      <pre class="json">{{ r.body }}</pre>
+      <div class="dialog-actions">
+        <button class="primary" (click)="uploadResult.set(null)">Close</button>
+      </div>
+    </div>
+  </div>
+}
