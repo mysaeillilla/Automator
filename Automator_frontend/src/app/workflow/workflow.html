@@ -1,16 +1,18 @@
 <div class="app">
 
   <div class="toolbar">
+
+    <div class="left">
     <button (click)="goback()">Back</button>
 
-    <button class="primary" (click)="upload()" [disabled]="uploading() || !actionCount()">
-      {{ uploading() ? 'Uploading…' : 'Upload' }}
-    </button>
-    <button (click)="showJson.set(true)">View JSON</button>
-    <button (click)="openImport()">Import JSON</button>
-
-    <input class="title-input" aria-label="Flow name"
+       <input class="title-input" aria-label="Flow name"
            [ngModel]="flowName()" (ngModelChange)="flowName.set($event)" />
+    </div>
+
+    <button class="primary" (click)="upload()" [disabled]="uploading() || !actionCount()">
+      {{ uploading() ? 'Saving...' : 'Save' }}
+    </button>
+
   </div>
 
   <!-- Old variable types converted when the workflow was opened -->

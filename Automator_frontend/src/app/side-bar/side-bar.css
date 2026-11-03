@@ -1,94 +1,455 @@
+
+/* ==========================================
+   SIDEBAR - GLASSMORPHIC DESIGN
+========================================== */
+
 :host {
   display: block;
   height: 100%;
+  position: relative;
+  z-index: 50;
+
+  --sidebar-bg: rgba(13, 22, 43, 0.88);
+  --sidebar-border: rgba(255, 255, 255, 0.09);
+
+  --accent: #818cf8;
+  --accent-strong: #6366f1;
+  --accent-light: #c7d2fe;
+  --cyan: #38bdf8;
+
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+
+  --sidebar-width: 240px;
+  --sidebar-collapsed-width: 70px;
+
+  font-family: Inter, "Segoe UI", sans-serif;
 }
+
+* {
+  box-sizing: border-box;
+}
+
+/* ==========================================
+   MAIN SIDEBAR
+========================================== */
 
 .sidebar {
+  position: relative;
+
   display: flex;
   flex-direction: column;
-  width: 228px;
+
+  width: var(--sidebar-width);
   height: 100%;
-  padding: 8px 0;
-  background-color: #ffffff;
-  border-right: 1px solid #e1dfdd;
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-  transition: width 0.15s ease;
+  min-height: 0;
+
+  padding: 15px 11px;
+
+  overflow: hidden;
+
+  border-right: 1px solid var(--sidebar-border);
+
+  background:
+    radial-gradient(
+      circle at 0% 0%,
+      rgba(99, 102, 241, 0.13),
+      transparent 38%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(20, 30, 56, 0.96),
+      rgba(11, 19, 38, 0.97)
+    );
+
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+
+  box-shadow:
+    8px 0 30px rgba(0, 0, 0, 0.13),
+    inset -1px 0 0 rgba(255, 255, 255, 0.025);
+
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* Decorative glow */
+
+.sidebar::before {
+  content: "";
+
+  position: absolute;
+  top: 12%;
+  left: -110px;
+
+  width: 180px;
+  height: 180px;
+
+  border-radius: 50%;
+
+  background: rgba(99, 102, 241, 0.13);
+  filter: blur(65px);
+
+  pointer-events: none;
+}
+
+/* ==========================================
+   COLLAPSED SIDEBAR
+========================================== */
 
 .sidebar--collapsed {
-  width: 48px;
+  width: var(--sidebar-collapsed-width);
+  padding-left: 9px;
+  padding-right: 9px;
 }
 
+/* ==========================================
+   NAVIGATION LIST
+========================================== */
+
 .sidebar__list {
-  flex: 1;
-  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+
   padding: 0;
+  margin: 14px 0 0;
+
   list-style: none;
 }
 
-.sidebar__footer {
-  padding-top: 8px;
-  border-top: 1px solid #e1dfdd;
+.sidebar__list li {
+  width: 100%;
+  min-width: 0;
 }
 
-/* Nav item */
+/* ==========================================
+   NAVIGATION ITEMS
+========================================== */
+
 .nav-item {
   position: relative;
+
   display: flex;
   align-items: center;
-  gap: 16px;
-  width: 100%;text-decoration: none;
-  height: 40px;
-  padding: 0 14px;
+  gap: 14px;
+
+  width: 100%;
+  min-height: 45px;
+
+  padding: 0 13px;
+
+  overflow: hidden;
+
+  border: 1px solid transparent;
+  border-radius: 11px;
+
   background: transparent;
-  border: none;
-  color: #323130;
-  font-size: 14px;
-  text-align: left;
+
+  color: var(--text-secondary);
+
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 550;
+
+  text-decoration: none;
   white-space: nowrap;
+
   cursor: pointer;
+
+  transition:
+    color 0.22s ease,
+    background 0.22s ease,
+    border-color 0.22s ease,
+    transform 0.22s ease,
+    box-shadow 0.22s ease;
 }
 
-.nav-item--toggle {
-  margin-bottom: 8px;
+/* Hover */
+
+.nav-item:hover {
+  color: #e0e7ff;
+
+  background: rgba(129, 140, 248, 0.095);
+
+  border-color: rgba(129, 140, 248, 0.17);
 }
+
+.nav-item:not(.nav-item--toggle):hover {
+  transform: translateX(2px);
+}
+
+/* ==========================================
+   NAVIGATION ICONS
+========================================== */
 
 .nav-item__icon {
-  flex-shrink: 0;
+  display: block;
+
   width: 20px;
   height: 20px;
+  flex-shrink: 0;
+
+  color: #8495b5;
+
+  transition:
+    color 0.22s ease,
+    transform 0.22s ease,
+    filter 0.22s ease;
 }
+
+.nav-item:hover .nav-item__icon {
+  color: #a5b4fc;
+
+  transform: scale(1.08);
+
+  filter: drop-shadow(
+    0 0 5px rgba(129, 140, 248, 0.45)
+  );
+}
+
+/* Navigation label */
 
 .nav-item__label {
   overflow: hidden;
-  text-overflow: ellipsis;
+
+  opacity: 1;
+  max-width: 190px;
+
+  transition:
+    opacity 0.2s ease,
+    max-width 0.3s ease;
+}
+
+/* ==========================================
+   ACTIVE NAVIGATION ITEM
+========================================== */
+
+.nav-item--active {
+  color: #ffffff !important;
+
+  border-color: rgba(129, 140, 248, 0.28);
+
+  background: linear-gradient(
+    100deg,
+    rgba(99, 102, 241, 0.25),
+    rgba(139, 92, 246, 0.13)
+  );
+
+  box-shadow:
+    0 5px 18px rgba(99, 102, 241, 0.11),
+    inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+.nav-item--active .nav-item__icon {
+  color: #c4b5fd;
+
+  filter: drop-shadow(
+    0 0 6px rgba(167, 139, 250, 0.45)
+  );
+}
+
+/* Active vertical indicator */
+
+.nav-item--active::before {
+  content: "";
+
+  position: absolute;
+
+  left: 0;
+  top: 9px;
+  bottom: 9px;
+
+  width: 3px;
+
+  border-radius: 0 5px 5px 0;
+
+  background: linear-gradient(
+    180deg,
+    #818cf8,
+    #c084fc
+  );
+
+  box-shadow: 0 0 10px rgba(129, 140, 248, 0.7);
+}
+
+/* ==========================================
+   TOGGLE BUTTON
+========================================== */
+
+.nav-item--toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 42px;
+  min-height: 42px;
+
+  margin-bottom: 8px;
+
+  padding: 0;
+
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 11px;
+
+  background: rgba(255, 255, 255, 0.055);
+
+  color: #a5b4fc;
+}
+
+.nav-item--toggle:hover {
+  border-color: rgba(129, 140, 248, 0.45);
+
+  background: rgba(99, 102, 241, 0.17);
+
+  color: #c7d2fe;
+
+  box-shadow: 0 5px 15px rgba(99, 102, 241, 0.14);
+}
+
+.nav-item--toggle .nav-item__icon {
+  color: inherit;
+}
+
+/* ==========================================
+   FOOTER / SETTINGS
+========================================== */
+
+.sidebar__footer {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+
+  margin-top: auto;
+  padding-top: 13px;
+
+  border-top: 1px solid rgba(255, 255, 255, 0.085);
+}
+
+.sidebar__footer .nav-item {
+  min-height: 45px;
+}
+
+/* ==========================================
+   COLLAPSED NAVIGATION
+========================================== */
+
+.sidebar--collapsed .sidebar__list {
+  gap: 9px;
+}
+
+.sidebar--collapsed .nav-item {
+  justify-content: center;
+  gap: 0;
+
+  padding: 0;
 }
 
 .sidebar--collapsed .nav-item__label {
-  display: none;
+  max-width: 0;
+  opacity: 0;
+
+  overflow: hidden;
 }
 
-.nav-item:hover {
-  background-color: #f3f2f1;
+.sidebar--collapsed .nav-item--toggle {
+  margin-left: 0;
+  margin-right: 0;
 }
+
+.sidebar--collapsed .nav-item:not(.nav-item--toggle):hover {
+  transform: none;
+}
+
+.sidebar--collapsed .nav-item--active::before {
+  left: 0;
+}
+
+.sidebar--collapsed .sidebar__footer {
+  align-items: center;
+}
+
+/* ==========================================
+   TOOLTIPS WHEN COLLAPSED
+========================================== */
+
+.sidebar--collapsed .nav-item:not(.nav-item--toggle) {
+  position: relative;
+}
+
+.sidebar--collapsed .nav-item:not(.nav-item--toggle):hover::after {
+  content: attr(title);
+
+  position: absolute;
+  z-index: 200;
+
+  left: calc(100% + 13px);
+  top: 50%;
+
+  transform: translateY(-50%);
+
+  width: max-content;
+  max-width: 200px;
+
+  padding: 9px 13px;
+
+  border: 1px solid rgba(129, 140, 248, 0.3);
+  border-radius: 9px;
+
+  background: rgba(19, 29, 53, 0.97);
+
+  color: #e2e8f0;
+
+  font-size: 12px;
+  font-weight: 650;
+
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.35);
+
+  pointer-events: none;
+
+  animation: tooltipFade 0.18s ease;
+}
+
+@keyframes tooltipFade {
+  from {
+    opacity: 0;
+    transform: translate(4px, -50%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(0, -50%);
+  }
+}
+
+/* ==========================================
+   ACCESSIBILITY
+========================================== */
 
 .nav-item:focus-visible {
-  outline: 2px solid #0f6cbd;
-  outline-offset: -2px;
+  outline: 2px solid #a5b4fc;
+  outline-offset: 3px;
 }
 
-/* Active item: blue text + left accent bar */
-.nav-item--active {
-  color: #0f6cbd;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
-.nav-item--active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 3px;
-  background-color: #0f6cbd;
-  border-radius: 0 2px 2px 0;
+/* ==========================================
+   RESPONSIVE
+========================================== */
+
+@media (max-width: 768px) {
+  .sidebar {
+    width: 215px;
+  }
+
+  .sidebar--collapsed {
+    width: 65px;
+  }
 }
