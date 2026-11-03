@@ -3,8 +3,11 @@ using System.Data;
 using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using BackendBotStore.Actions;
+using static BackendBotStore.Services.WorkflowVariableStore;
 
 namespace BackendBotStore.Services;
 
@@ -25,21 +28,7 @@ public sealed class WorkflowDefinition
     public List<WorkflowAction> Actions { get; set; } = new();
 }
 
-// public sealed class WorkflowVariable
-// {
-//     /// <summary>Plain .NET value (string, long, double, bool, List, Dictionary, or any object set by an action).</summary>
-//     public object? Value { get; set; }
-
-//     /// <summary>
-//     /// Declared type: a name registered in ICoreCatalog.VariableTypes
-//     /// ("STRING" | "NUMBER" | "BOOLEAN" | "LIST" | "DICTIONARY" | "DATATABLE" | "ANY" | ...),
-//     /// or an object describing a structure (kept raw, not coerced).
-//     /// </summary>
-//     public JsonElement Type { get; set; }
-
-//     public bool Input { get; set; }
-//     public bool Output { get; set; }
-// }
+// WorkflowVariable now lives in WorkflowVariable.cs
 
 public sealed class WorkflowAction
 {
@@ -89,8 +78,15 @@ public class WorkflowExecutor
     public const string CorePackage = "Core";
 
     private readonly ICoreCatalog _catalog;
+    private WorkflowVariableStore _store;
+    private VariableActions _variableActions;
 
-    public WorkflowExecutor(ICoreCatalog catalog) => _catalog = catalog;
+    public WorkflowExecutor(ICoreCatalog catalog)
+    {
+        _catalog = catalog;
+        _store = new WorkflowVariableStore(catalog);
+        _variableActions = new VariableActions(_store);
+    }
 
     // {{var}}  {{var.Prop}}  {{var[0]}}  {{var['Column Name']}}  {{var.Items[2].Name}}
     private static readonly Regex TemplateRegex = new(
@@ -114,7 +110,8 @@ public class WorkflowExecutor
     private readonly Dictionary<string, Type> _typeCache = new(StringComparer.OrdinalIgnoreCase);
 
     public Dictionary<string, string> Packages { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-    public Dictionary<string, WorkflowVariable> Variables { get; set; } = new();
+    /// <summary>Read-only view of the run's variables (all writes go through the variable store).</summary>
+    public IReadOnlyDictionary<string, WorkflowVariable> Variables => _store.All;
     public List<WorkflowAction> Actions { get; set; } = new();
     public WorkflowAction? CurrentAction { get; set; }
     public string? CurrentActionId { get; private set; }
@@ -170,28 +167,9 @@ public class WorkflowExecutor
             Packages = new Dictionary<string, string>(
                 definition.Packages ?? new(), StringComparer.OrdinalIgnoreCase);
 
-            // 2. Variables
-            foreach (var (name, variable) in definition.Variables ?? new())
-            {
-                if (variable.Type.ValueKind == JsonValueKind.String &&
-                    !_catalog.TryGetVariableType(variable.Type.GetString(), out _))
-                    return Fail($"Variable '{name}' has unknown type '{variable.Type.GetString()}'.");
-
-                variable.Value = Normalize(variable.Value);
-                Variables[name] = variable;
-            }
-
-            if (inputOverrides is not null)
-            {
-                foreach (var (name, value) in inputOverrides)
-                {
-                    if (!Variables.TryGetValue(name, out var v))
-                        return Fail($"Cannot override unknown variable '{name}'.");
-                    if (!v.Input)
-                        return Fail($"Variable '{name}' is not an input variable.");
-                    v.Value = Normalize(value);
-                }
-            }
+            // 2. Variables: validated against the catalog and coerced to their declared type
+            WorkflowVariableInitializer.Initialize(_store, definition.Variables);
+            WorkflowVariableInitializer.ApplyInputs(_store, inputOverrides);
 
             // 3. Actions: validate the whole tree first, then run it
             Actions = definition.Actions ?? new();
@@ -221,7 +199,7 @@ public class WorkflowExecutor
 
     /// <summary>Values of all variables flagged "output": true.</summary>
     public Dictionary<string, object?> GetOutputVariables() =>
-        Variables.Where(kv => kv.Value.Output).ToDictionary(kv => kv.Key, kv => kv.Value.Value);
+        _store.All.Where(kv => kv.Value.Output).ToDictionary(kv => kv.Key, kv => kv.Value.Value);
 
     // ─────────────────────────────────────────────────────────
     //  Variable evaluation
@@ -232,7 +210,7 @@ public class WorkflowExecutor
     /// </summary>
     public bool VariableEvaluator(string variableName)
     {
-        if (!Variables.TryGetValue(variableName, out var variable))
+        if (!_store.TryGet(variableName, out var variable))
             return Fail($"Variable '{variableName}' is not defined.");
 
         if (variable.Input && variable.Value is null)
@@ -360,7 +338,25 @@ public class WorkflowExecutor
                     producesValue = true;
                     break;
                 case "if":       flow = ExecuteIf(id, a); break;
-                case "foreach":  flow = ExecuteForEach(id, a, inputs); break;
+                case "variable.create":
+                    result = _variableActions.Create(
+                        RequiredText(inputs, "Name"),
+                        Convert.ToString(inputs.GetValueOrDefault("Type")),
+                        inputs.GetValueOrDefault("Value"));
+                    producesValue = true;
+                    break;
+                case "variable.set":
+                    result = _variableActions.Set(RequiredText(inputs, "Name"), inputs.GetValueOrDefault("Value"));
+                    producesValue = true;
+                    break;
+                case "variable.convert":
+                    result = _variableActions.Convert(
+                        inputs.GetValueOrDefault("Value"),
+                        RequiredText(inputs, "TargetType"));
+                    producesValue = true;
+                    break;
+                case "foreach":    flow = ExecuteForEach(id, a, inputs); break;
+                case "foreachrow": flow = ExecuteForEachRow(id, a, inputs); break;
                 case "forcount": flow = ExecuteForCount(id, a, inputs); break;
                 case "while":    flow = ExecuteWhile(id, a); break;
                 case "trycatch": flow = ExecuteTryCatch(id, a); break;
@@ -399,6 +395,14 @@ public class WorkflowExecutor
         }
     }
 
+    private static string RequiredText(Dictionary<string, object?> inputs, string key)
+    {
+        var text = Convert.ToString(inputs.GetValueOrDefault(key), CultureInfo.InvariantCulture);
+        return string.IsNullOrWhiteSpace(text)
+            ? throw new InvalidOperationException($"Input '{key}' is required.")
+            : text.Trim();
+    }
+
     private Flow ExecuteIf(string id, WorkflowAction a)
     {
         var ok = EvaluateCondition(a.Condition!.Value);
@@ -416,45 +420,29 @@ public class WorkflowExecutor
         exit = flow == Flow.Return ? Flow.Return : Flow.Next;   // Break is consumed by the loop
         return flow is Flow.Break or Flow.Return;               // Continue / Next -> keep looping
     }
-private async Task ExecuteForEachRowAsync(
-    WorkflowNode node,
-    ExecutionContext context,
-    CancellationToken ct)
-{
-    var inputs = ResolveInputs(node, context);
-
-    if (!inputs.TryGetValue("Table", out var input))
-        throw new InvalidOperationException(
-            "ForEachRow requires a Table input.");
-
-    if (input is not DataTable table)
-        throw new InvalidOperationException(
-            "ForEachRow expects a DATATABLE variable.");
-
-    for (int i = 0; i < table.Rows.Count; i++)
+    /// <summary>Iterates the rows of a DATATABLE; Item is the live DataRow (a ROW variable), Index the 0-based position.</summary>
+    private Flow ExecuteForEachRow(string id, WorkflowAction a, Dictionary<string, object?> inputs)
     {
-        ct.ThrowIfCancellationRequested();
+        var raw = VariableValueConverter.Unwrap(inputs.GetValueOrDefault("Table"));
 
-        DataRow currentRow = table.Rows[i];
+        // A DataTable is used as is (not copied) so edits to Item change the variable's table.
+        var table = raw as DataTable
+                    ?? VariableValueConverter.Convert(raw, "DATATABLE") as DataTable
+                    ?? throw new InvalidOperationException("ForEachRow requires a Table input (DATATABLE).");
 
-        context.Variables.Set(
-            "CurrentItem",
-            currentRow,
-            "ROW");
+        var rows = table.Rows.Cast<DataRow>().ToList();   // snapshot: safe if the body adds/removes rows
+        var n = 0;
+        foreach (var row in rows)
+        {
+            if (row.RowState is DataRowState.Deleted or DataRowState.Detached) continue;
 
-        context.Variables.Set(
-            "LoopIndex",
-            i,
-            "NUMBER");
-
-        // Execute child actions inside the Body block.
-        await ExecuteBlockAsync(
-            node,
-            "Body",
-            context,
-            ct);
+            SetOutput(a, "Item", row);
+            SetOutput(a, "Index", (long)n);
+            if (RunIteration(id, a, n++, out var exit)) return exit;
+        }
+        return Flow.Next;
     }
-}
+
     private Flow ExecuteForEach(string id, WorkflowAction a, Dictionary<string, object?> inputs)
     {
         var items = Enumerate(inputs.GetValueOrDefault("Collection"));   // snapshot: safe if the body mutates the source
@@ -523,8 +511,8 @@ private async Task ExecuteForEachRowAsync(
         if (TryProp(node, "Any", out var any)) return any.EnumerateArray().Any(EvaluateCondition);
         if (TryProp(node, "Not", out var negated)) return !EvaluateCondition(negated);
 
-        var left = TryProp(node, "Left", out var l) ? ResolveValue(ToPlain(l)) : null;
-        var right = TryProp(node, "Right", out var r) ? ResolveValue(ToPlain(r)) : null;
+        var left = TryProp(node, "Left", out var l) || TryProp(node, "LeftOperand", out l) ? ResolveValue(ToPlain(l)) : null;
+        var right = TryProp(node, "Right", out var r) || TryProp(node, "RightOperand", out r) ? ResolveValue(ToPlain(r)) : null;
         var op = TryProp(node, "Operator", out var o)
             ? o.GetString() ?? ""
             : throw new InvalidOperationException("Condition has no Operator.");
@@ -538,10 +526,13 @@ private async Task ExecuteForEachRowAsync(
             "equals"         => AreEqual(left, right),
             "notequals"      => !AreEqual(left, right),
             "greaterthan"    => CompareValues(left, right) > 0,
-            "greaterorequal" => CompareValues(left, right) >= 0,
+            "greaterorequal" or "greaterthanorequal" => CompareValues(left, right) >= 0,
             "lessthan"       => CompareValues(left, right) < 0,
-            "lessorequal"    => CompareValues(left, right) <= 0,
+            "lessorequal" or "lessthanorequal"       => CompareValues(left, right) <= 0,
             "contains"       => ContainsValue(left, right),
+            "notcontains"    => !ContainsValue(left, right),
+            "istrue"         => ToBool(left),
+            "isfalse"        => !ToBool(left),
             "startswith"     => Stringify(left).StartsWith(Stringify(right), StringComparison.OrdinalIgnoreCase),
             "endswith"       => Stringify(left).EndsWith(Stringify(right), StringComparison.OrdinalIgnoreCase),
             "matches"        => Regex.IsMatch(Stringify(left), Stringify(right)),
@@ -570,6 +561,7 @@ private async Task ExecuteForEachRowAsync(
     internal static bool TryNumber(object? v, out double d)
     {
         d = 0;
+        v = VariableValueConverter.Unwrap(v);
         if (v is null or bool) return false;
         if (v is string s) return double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out d);
         if (v is sbyte or byte or short or ushort or int or uint or long or ulong or float or double or decimal)
@@ -580,12 +572,12 @@ private async Task ExecuteForEachRowAsync(
         return false;
     }
 
-    internal static bool ToBool(object? v) => v switch
+    internal static bool ToBool(object? v) => VariableValueConverter.Unwrap(v) switch
     {
         null => false,
         bool b => b,
         string s => s.Equals("true", StringComparison.OrdinalIgnoreCase) || s == "1",
-        _ when TryNumber(v, out var d) => d != 0,
+        var other when TryNumber(other, out var d) => d != 0,
         _ => true
     };
 
@@ -602,7 +594,7 @@ private async Task ExecuteForEachRowAsync(
             ? x.CompareTo(y)
             : string.Compare(Stringify(a), Stringify(b), StringComparison.Ordinal);
 
-    private static bool IsEmpty(object? v) => v switch
+    private static bool IsEmpty(object? v) => VariableValueConverter.Unwrap(v) switch
     {
         null => true,
         string s => s.Length == 0,
@@ -633,7 +625,7 @@ private async Task ExecuteForEachRowAsync(
             throw new InvalidOperationException("Evaluate: Expression is empty.");
 
         var interpreter = new DynamicExpresso.Interpreter();
-        foreach (var (name, variable) in Variables)
+        foreach (var (name, variable) in _store.All)
         {
             if (!IdentifierRegex.IsMatch(name)) continue;   // names with spaces etc. can't be used in expressions
             interpreter.SetVariable(name, variable.Value, variable.Value?.GetType() ?? typeof(object));
@@ -657,6 +649,20 @@ private async Task ExecuteForEachRowAsync(
             case JsonElement je:
                 return Enumerate(ToPlain(je));
 
+            case JsonValue:
+                throw new InvalidOperationException("Cannot iterate over a JSON scalar.");
+
+            case JsonObject jo:
+                foreach (var (k, v) in jo) result.Add((k, v));
+                break;
+
+            case JsonArray ja:
+            {
+                var j = 0;
+                foreach (var v in ja) result.Add((j++, v));
+                break;
+            }
+
             case string s when s.TrimStart().StartsWith('[') || s.TrimStart().StartsWith('{'):
                 return Enumerate(ToPlain(JsonSerializer.Deserialize<JsonElement>(s)));
 
@@ -667,7 +673,7 @@ private async Task ExecuteForEachRowAsync(
             {
                 var n = 0;
                 foreach (DataRow row in dt.Rows)
-                    result.Add((n++, RowToDict(row)));
+                    result.Add((n++, row));            // Item is a real DataRow (ROW)
                 break;
             }
 
@@ -693,10 +699,6 @@ private async Task ExecuteForEachRowAsync(
         return result;
     }
 
-    private static Dictionary<string, object?> RowToDict(DataRow row) =>
-        row.Table.Columns.Cast<DataColumn>()
-           .ToDictionary(c => c.ColumnName, c => row[c] is DBNull ? null : (object?)row[c]);
-
     // ─────────────────────────────────────────────────────────
     //  Variable writes
     // ─────────────────────────────────────────────────────────
@@ -708,29 +710,30 @@ private async Task ExecuteForEachRowAsync(
             AssignVariable(TemplateRegex.Match(target).Groups[1].Value, value);
     }
 
-    private void AssignVariable(string name, object? value)
-    {
-        if (!Variables.TryGetValue(name, out var variable))
-            throw new InvalidOperationException($"Variable '{name}' is not defined.");
-        variable.Value = Coerce(value, variable.Type);
-    }
-
-    /// <summary>
-    /// Coerces to the declared type using the coercer registered in ICoreCatalog.
-    /// Types without a coercer (LIST / DICTIONARY / DATATABLE / ANY) and structured types pass through.
-    /// </summary>
-    private object? Coerce(object? value, JsonElement declared)
-    {
-        if (value is null || declared.ValueKind != JsonValueKind.String) return value;
-
-        return _catalog.TryGetVariableType(declared.GetString(), out var type) && type.Coerce is { } coerce
-            ? coerce(value)
-            : value;
-    }
+    /// <summary>Writes a variable; the value is coerced to the variable's declared type.</summary>
+    private void AssignVariable(string name, object? value) => _store.Set(name, value);
 
     // ─────────────────────────────────────────────────────────
     //  Static validation (runs before anything executes)
     // ─────────────────────────────────────────────────────────
+
+    // Names declared by Variable.Create actions seen so far during validation.
+    private readonly HashSet<string> _declaredByActions = new(StringComparer.OrdinalIgnoreCase);
+
+    private bool IsKnownVariable(string name) => _store.Exists(name) || _declaredByActions.Contains(name);
+
+    private static string? LiteralInput(WorkflowAction a, string key)
+    {
+        foreach (var (k, v) in a.Inputs)
+            if (k.Equals(key, StringComparison.OrdinalIgnoreCase) && v.ValueKind == JsonValueKind.String)
+            {
+                var text = v.GetString();
+                return text is not null && !TemplateRegex.IsMatch(text) && !string.IsNullOrWhiteSpace(text)
+                    ? text.Trim()
+                    : null;
+            }
+        return null;
+    }
 
     private void ValidateBlock(List<WorkflowAction>? block, string prefix, bool inLoop)
     {
@@ -753,7 +756,7 @@ private async Task ExecuteForEachRowAsync(
                 throw new InvalidOperationException($"Action {id}: unknown Core action '{a.FunctionName}'.");
 
             foreach (var name in GetInputVariables(a))
-                if (!Variables.ContainsKey(name))
+                if (!IsKnownVariable(name))
                     throw new InvalidOperationException($"Action {id}: variable '{name}' is not defined.");
 
             foreach (var target in a.Outputs.Values)
@@ -762,15 +765,27 @@ private async Task ExecuteForEachRowAsync(
                 if (!m.Success || m.Length != target.Length || m.Groups[2].Length > 0)
                     throw new InvalidOperationException(
                         $"Action {id}: output target '{target}' must be of the form {{{{variable}}}}.");
-                if (!Variables.ContainsKey(m.Groups[1].Value))
+                if (!IsKnownVariable(m.Groups[1].Value))
                     throw new InvalidOperationException(
                         $"Action {id}: output variable '{m.Groups[1].Value}' is not defined.");
             }
 
+            // A literal Variable.Create name makes the variable usable by the actions after it.
+            if (IsCore(a) && a.FunctionName.Equals("Variable.Create", StringComparison.OrdinalIgnoreCase)
+                && LiteralInput(a, "Name") is { } createdName)
+                _declaredByActions.Add(createdName);
+
             if (!IsCore(a)) continue;
 
             var fn = a.FunctionName.ToLowerInvariant();
-            var isLoop = fn is "foreach" or "forcount" or "while";
+            var isLoop = fn is "foreach" or "foreachrow" or "forcount" or "while";
+
+            if (fn == "foreachrow")
+            {
+                // Item must be a ROW variable, Index a NUMBER variable
+                CheckLoopOutput(id, a, "Item", "ROW");
+                CheckLoopOutput(id, a, "Index", "NUMBER");
+            }
 
             if ((fn is "break" or "continue") && !inLoop)
                 throw new InvalidOperationException($"Action {id}: '{a.FunctionName}' can only be used inside a loop.");
@@ -782,6 +797,17 @@ private async Task ExecuteForEachRowAsync(
             ValidateBlock(a.Else,  $"{id}.else.",  inLoop);
             ValidateBlock(a.Catch, $"{id}.catch.", inLoop);
         }
+    }
+
+    private void CheckLoopOutput(string id, WorkflowAction a, string key, string expectedType)
+    {
+        if (!a.Outputs.TryGetValue(key, out var target)) return;
+
+        var name = TemplateRegex.Match(target).Groups[1].Value;
+        if (_store.TryGet(name, out var variable) &&
+            !variable.Type.Equals(expectedType, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"Action {id}: '{key}' must be stored in a {expectedType} variable, but '{name}' is {variable.Type}.");
     }
 
     // ─────────────────────────────────────────────────────────
@@ -940,7 +966,7 @@ private async Task ExecuteForEachRowAsync(
         {
             var varName = TemplateRegex.Match(target).Groups[1].Value;
             AssignVariable(varName, ExtractOutput(result, key));
-            written[varName] = Variables[varName].Value;
+            written[varName] = _store.GetValue(varName);
         }
 
         return written;
@@ -1017,48 +1043,75 @@ private async Task ExecuteForEachRowAsync(
         foreach (Match t in PathTokenRegex.Matches(path))
         {
             if (current is JsonElement je) current = ToPlain(je);
+            current = VariableValueConverter.Unwrap(current);
             if (current is null) return null;
 
             if (t.Groups[2].Success)                                   // [n]
             {
                 var idx = int.Parse(t.Groups[2].Value);
-                current = current is IList list && idx < list.Count
-                    ? list[idx]
-                    : throw new InvalidOperationException($"Index [{idx}] is out of range or the value is not a list.");
+                current = current switch
+                {
+                    DataTable table when idx < table.Rows.Count => table.Rows[idx],
+                    DataRow row when idx < row.Table.Columns.Count => row.IsNull(idx) ? null : row[idx],
+                    JsonArray array when idx < array.Count => array[idx],
+                    IList list when idx < list.Count => list[idx],
+                    _ => throw new InvalidOperationException($"Index [{idx}] is out of range or the value is not a list.")
+                };
                 continue;
             }
 
             var name = t.Groups[1].Success ? t.Groups[1].Value : t.Groups[3].Value;   // .name or ['name']
-            if (current is IDictionary d)
+            switch (current)
             {
-                var key = d.Keys.Cast<object>().FirstOrDefault(k =>
-                              string.Equals(k.ToString(), name, StringComparison.OrdinalIgnoreCase))
-                          ?? throw new InvalidOperationException($"Key '{name}' not found.");
-                current = d[key];
-            }
-            else
-            {
-                var prop = current.GetType().GetProperty(name,
-                               BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase)
-                           ?? throw new InvalidOperationException($"'{name}' not found on {current.GetType().Name}.");
-                current = prop.GetValue(current);
+                case DataRow row:
+                    var column = row.Table.Columns.Cast<DataColumn>().FirstOrDefault(c =>
+                                     string.Equals(c.ColumnName, name, StringComparison.OrdinalIgnoreCase))
+                                 ?? throw new InvalidOperationException($"Column '{name}' not found.");
+                    current = row.IsNull(column) ? null : row[column];
+                    break;
+
+                case DataTable table:
+                    current = name.ToLowerInvariant() switch
+                    {
+                        "count" or "rowcount" => (long)table.Rows.Count,
+                        "headers" or "columns" => table.Columns.Cast<DataColumn>().Select(c => c.ColumnName).ToList(),
+                        "rows" => table.Rows.Cast<DataRow>().ToList(),
+                        _ => throw new InvalidOperationException($"'{name}' not found on DATATABLE (use Count, Headers, Rows or [index]).")
+                    };
+                    break;
+
+                case JsonObject obj:
+                    var pair = obj.FirstOrDefault(p => string.Equals(p.Key, name, StringComparison.OrdinalIgnoreCase));
+                    if (pair.Key is null) throw new InvalidOperationException($"Key '{name}' not found.");
+                    current = pair.Value;
+                    break;
+
+                case IDictionary d:
+                    var key = d.Keys.Cast<object>().FirstOrDefault(k =>
+                                  string.Equals(k.ToString(), name, StringComparison.OrdinalIgnoreCase))
+                              ?? throw new InvalidOperationException($"Key '{name}' not found.");
+                    current = d[key];
+                    break;
+
+                default:
+                    var prop = current.GetType().GetProperty(name,
+                                   BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase)
+                               ?? throw new InvalidOperationException($"'{name}' not found on {current.GetType().Name}.");
+                    current = prop.GetValue(current);
+                    break;
             }
         }
-        return current;
+
+        // JSON scalars come out as plain values so comparisons and conversions behave
+        return VariableValueConverter.Unwrap(current);
     }
 
     private object? GetVariableValue(string name) =>
-        Variables.TryGetValue(name, out var v)
+        _store.TryGet(name, out var v)
             ? v.Value
             : throw new InvalidOperationException($"Variable '{name}' is not defined.");
 
-    internal static string Stringify(object? value) => value switch
-    {
-        null => string.Empty,
-        string s => s,
-        IConvertible c => c.ToString(CultureInfo.InvariantCulture),
-        _ => JsonSerializer.Serialize(value)
-    };
+    internal static string Stringify(object? value) => VariableValueConverter.Stringify(value);
 
     // ─────────────────────────────────────────────────────────
     //  Value conversion helpers
@@ -1093,6 +1146,14 @@ private async Task ExecuteForEachRowAsync(
         if (target == typeof(string))
             return Stringify(value);
 
+        // Typed variable values for DLL parameters
+        if (target == typeof(DataTable)) return VariableValueConverter.Convert(value, "DATATABLE");
+        if (target == typeof(DataRow)) return VariableValueConverter.Convert(value, "ROW");
+        if (target == typeof(JsonNode)) return VariableValueConverter.Convert(value, "JSON");
+
+        // A DataTable / DataRow cannot be serialised directly; use its {headers, rows} / object JSON form
+        if (value is DataTable or DataRow) value = VariableValueConverter.Convert(value, "JSON")!;
+
         // Round-trip through JSON handles long->int, list->List<T>, dict->POCO, etc.
         var json = JsonSerializer.Serialize(value);
         return JsonSerializer.Deserialize(json, target, JsonOptions);
@@ -1105,7 +1166,8 @@ private async Task ExecuteForEachRowAsync(
     private void Reset()
     {
         Packages = new(StringComparer.OrdinalIgnoreCase);
-        Variables = new();
+        _store = new WorkflowVariableStore(_catalog);
+        _variableActions = new VariableActions(_store);
         Actions = new();
         CurrentAction = null;
         CurrentActionId = null;
@@ -1114,6 +1176,7 @@ private async Task ExecuteForEachRowAsync(
         _instanceCache.Clear();
         _typeCache.Clear();
         _sequence = 0;
+        _declaredByActions.Clear();
     }
 
     private void Log(string message) => Logs.Add($"{DateTime.UtcNow:O} {message}");

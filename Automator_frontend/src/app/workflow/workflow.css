@@ -577,3 +577,11 @@ button.icon:hover { background: rgba(0, 0, 0, .08); color: var(--text); }
   .body { grid-template-columns: 200px 1fr 220px; }
   .title-input { width: 160px; }
 }
+.banner { display: flex; gap: 12px; padding: 8px 14px; font-size: 13px; align-items: flex-start; }
+.banner-body { flex: 1; }
+.banner ul { margin: 4px 0 0; padding-left: 18px; }
+.banner.info { background: #e8f1fd; border-bottom: 1px solid #b6d0f5; }
+.banner.warn-banner { background: #fff4e0; border-bottom: 1px solid #f0c987; max-height: 120px; overflow: auto; }
+.var-section { margin: 10px 0 4px; font-size: 12px; text-transform: uppercase; color: #777; }
+.var-item.declared { opacity: 0.8; }
+.hint { font-size: 12px; margin: -4px 0 8px; }

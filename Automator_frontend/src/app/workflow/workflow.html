@@ -9,10 +9,35 @@
     <button (click)="showJson.set(true)">View JSON</button>
     <button (click)="openImport()">Import JSON</button>
 
-      <input class="title-input" aria-label="Flow name"
+    <input class="title-input" aria-label="Flow name"
            [ngModel]="flowName()" (ngModelChange)="flowName.set($event)" />
-
   </div>
+
+  <!-- Old variable types converted when the workflow was opened -->
+  @if (migrationNotes().length) {
+    <div class="banner info">
+      <div class="banner-body">
+        <strong>Variable types were updated</strong>
+        <span class="muted">LIST, DICTIONARY and ANY are no longer supported.</span>
+        <ul>
+          @for (note of migrationNotes(); track note) { <li>{{ note }}</li> }
+        </ul>
+      </div>
+      <button class="icon" title="Dismiss" (click)="migrationNotes.set([])">✕</button>
+    </div>
+  }
+
+  <!-- Problems the backend would also reject -->
+  @if (problems().length) {
+    <div class="banner warn-banner">
+      <div class="banner-body">
+        <strong>{{ problems().length }} problem{{ problems().length === 1 ? '' : 's' }} found</strong>
+        <ul>
+          @for (p of problems(); track p) { <li>{{ p }}</li> }
+        </ul>
+      </div>
+    </div>
+  }
 
   <div class="body">
     <!-- ================= Actions pane ================= -->
@@ -87,10 +112,22 @@
         } @empty {
           <p class="muted pad">No variables yet. Use + to create one.</p>
         }
+
+        <!-- Variables created by Variable.Create actions (made at run time, not stored in the variables list) -->
+        @if (declaredVariables().length) {
+          <div class="var-section">Created by actions</div>
+          @for (v of declaredVariables(); track v.name) {
+            <div class="var-item declared">
+              <div class="var-main">
+                <strong>{{ v.name }}</strong>
+                <span class="type">{{ v.type || 'inferred' }}</span>
+              </div>
+            </div>
+          }
+        }
       </div>
     </aside>
   </div>
-
 
 </div>
 
@@ -154,7 +191,7 @@
               <input [(ngModel)]="c.left" placeholder="{{ '{{variable}}' }}" />
               <select (change)="appendVar(c, 'left', $any($event.target).value); $any($event.target).value = ''">
                 <option value="">{{ '{x}' }}</option>
-                @for (v of variables(); track v.name) { <option [value]="v.name">{{ v.name }}</option> }
+                @for (v of allVariables(); track v.name) { <option [value]="v.name">{{ v.name }}</option> }
               </select>
             </div>
           </label>
@@ -169,7 +206,7 @@
                 <input [(ngModel)]="c.right" />
                 <select (change)="appendVar(c, 'right', $any($event.target).value); $any($event.target).value = ''">
                   <option value="">{{ '{x}' }}</option>
-                  @for (v of variables(); track v.name) { <option [value]="v.name">{{ v.name }}</option> }
+                  @for (v of allVariables(); track v.name) { <option [value]="v.name">{{ v.name }}</option> }
                 </select>
               </div>
             </label>
@@ -188,9 +225,12 @@
                 } @else {
                   <input [(ngModel)]="d.inputs[f.key]" />
                 }
+                <!-- DATATABLE / ROW inputs only list variables of that type (or JSON) -->
                 <select (change)="appendVar(d.inputs, f.key, $any($event.target).value); $any($event.target).value = ''">
                   <option value="">{{ '{x}' }}</option>
-                  @for (v of variables(); track v.name) { <option [value]="v.name">{{ v.name }}</option> }
+                  @for (v of varsForInput(f.type); track v.name) {
+                    <option [value]="v.name">{{ v.name }}{{ v.type ? ' (' + v.type + ')' : '' }}</option>
+                  }
                 </select>
               </div>
             </label>
@@ -198,14 +238,17 @@
         </fieldset>
       }
 
-      @if (d.outputKeys.length) {
+      @if (d.outputFields.length) {
         <fieldset>
           <legend>Produced variables</legend>
-          @for (k of d.outputKeys; track k) {
-            <label>{{ k }}
-              <select [(ngModel)]="d.outputs[k]">
+          @for (f of d.outputFields; track f.key) {
+            <label>{{ f.key }} <small class="muted">({{ f.type }})</small>
+              <!-- ROW / DATATABLE outputs only list variables of exactly that type -->
+              <select [(ngModel)]="d.outputs[f.key]">
                 <option value="">(none)</option>
-                @for (v of variables(); track v.name) { <option [value]="v.name">{{ v.name }}</option> }
+                @for (v of varsForOutput(f.type); track v.name) {
+                  <option [value]="v.name">{{ v.name }}{{ v.type ? ' (' + v.type + ')' : '' }}</option>
+                }
               </select>
             </label>
           }
@@ -234,9 +277,20 @@
         </select>
       </label>
       <label>Default value
-        <textarea rows="3" [(ngModel)]="v.valueText"
-                  placeholder="Lists/objects as JSON, e.g. [1,2,3]"></textarea>
+        @if (isStructuredType(v.type)) {
+          <!-- JSON / DATATABLE / ROW are typed as JSON text -->
+          <textarea class="json-input" rows="8" [(ngModel)]="v.valueText"
+                    [placeholder]="valueHint(v.type)"></textarea>
+        } @else if (v.type === 'BOOLEAN') {
+          <select [(ngModel)]="v.valueText">
+            <option value="false">false</option>
+            <option value="true">true</option>
+          </select>
+        } @else {
+          <input [(ngModel)]="v.valueText" [placeholder]="valueHint(v.type)" />
+        }
       </label>
+      <p class="muted hint">{{ valueHint(v.type) }}</p>
       <label class="check"><input type="checkbox" [(ngModel)]="v.input" /> Use as input</label>
       <label class="check"><input type="checkbox" [(ngModel)]="v.output" /> Use as output</label>
       @if (varError()) { <p class="error">{{ varError() }}</p> }

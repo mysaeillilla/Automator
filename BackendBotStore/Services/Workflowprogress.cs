@@ -1,3 +1,4 @@
+using System.Data;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -26,6 +27,7 @@ public interface IWorkflowProgressListener
 public static class WorkflowJson
 {
     private const int MaxCharsPerValue = 100_000;
+    private const int MaxPreviewRows = 100;
 
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -41,6 +43,21 @@ public static class WorkflowJson
     public static string Serialize(object? value)
     {
         if (value is null) return "null";
+
+        // DataTable / DataRow cannot be serialised as they are (cycles, huge): store a small preview instead
+        value = value switch
+        {
+            DataTable table => new
+            {
+                type = "DATATABLE",
+                rowCount = table.Rows.Count,
+                headers = table.Columns.Cast<DataColumn>().Select(c => c.ColumnName).ToList(),
+                rows = table.Rows.Cast<DataRow>().Take(MaxPreviewRows)
+                            .Select(VariableValueConverter.DataRowToDictionary).ToList()
+            },
+            DataRow row => VariableValueConverter.DataRowToDictionary(row),
+            _ => value
+        };
 
         try
         {

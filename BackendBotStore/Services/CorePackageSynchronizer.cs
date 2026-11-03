@@ -86,6 +86,8 @@ public sealed class CorePackageStartupService(
     ICoreCatalog catalog,
     ILogger<CorePackageStartupService> log) : IHostedService
 {
+    private readonly SemaphoreSlim _syncGate = new(1, 1);   // runtime registrations must not sync concurrently
+
     public async Task StartAsync(CancellationToken ct)
     {
         await SyncAsync(ct);
@@ -102,6 +104,7 @@ public sealed class CorePackageStartupService(
 
     private async Task SyncAsync(CancellationToken ct)
     {
+        await _syncGate.WaitAsync(ct);
         try
         {
             await using var scope = scopes.CreateAsyncScope();
@@ -111,6 +114,10 @@ public sealed class CorePackageStartupService(
         {
             log.LogError(ex, "Could not sync the Core package.");
         }
+        finally
+        {
+            _syncGate.Release();
+        }
     }
 }
 
@@ -119,12 +126,35 @@ public sealed class CorePackageStartupService(
 [Route("api/Core")]
 public sealed class CoreController(ICoreCatalog catalog) : ControllerBase
 {
+    /// <summary>
+    /// The variable types a user can create, in display order (built-ins first), each with a description
+    /// and an example value. The internal ANY type is never listed.
+    /// </summary>
+    [HttpGet("variable-types")]
+    public IActionResult GetVariableTypes()
+    {
+        var order = VariableValueConverter.SupportedTypes.ToList();
+
+        var types = catalog.VariableTypes
+            .Where(t => !t.Internal)
+            .OrderBy(t => order.IndexOf(t.Name) is var i && i >= 0 ? i : int.MaxValue)
+            .ThenBy(t => t.Name, StringComparer.Ordinal)
+            .Select(t => new
+            {
+                name = t.Name,
+                description = t.Description,
+              
+            });
+
+        return Ok(types);
+    }
+
     [HttpGet("catalog")]
     public IActionResult GetCatalog() => Ok(new
     {
         package = catalog.PackageName,
         version = catalog.Version,
         actions = catalog.Actions,
-        variableTypes = catalog.VariableTypes,
+        variableTypes = catalog.VariableTypes.Where(t => !t.Internal),   // ANY is not user-creatable
     });
 }

@@ -38,6 +38,15 @@ public sealed record VariableTypeInfo(string Name, string Description)
     /// <summary>Optional coercion applied whenever a value is written to a variable of this type (null values skip it).</summary>
     [JsonIgnore]
     public Func<object?, object?>? Coerce { get; init; }
+
+    /// <summary>Internal types (ANY) are used in action signatures only: not offered to the designer, not usable for variables.</summary>
+    public bool Internal { get; init; }
+
+    /// <summary>Sample value shown by the designer when a variable of this type is created.</summary>
+    public string? Example { get; init; }
+
+    /// <summary>True when the value is typed as JSON text (JSON / DATATABLE / ROW), so the designer uses a multi-line box.</summary>
+    public bool Structured { get; init; }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -166,251 +175,142 @@ public sealed class CoreCatalog : ICoreCatalog
 
 internal sealed class BuiltInCoreContributor : ICoreCatalogContributor
 {
-
+    // Must match the operators handled by WorkflowExecutor.EvaluateCondition.
     private static readonly string[] ComparisonOperators =
-{
-    "Equals",
-    "NotEquals",
-    "GreaterThan",
-    "GreaterThanOrEqual",
-    "LessThan",
-    "LessThanOrEqual",
-    "Contains",
-    "NotContains",
-    "StartsWith",
-    "EndsWith",
-    "IsEmpty",
-    "IsNotEmpty",
-    "IsNull",
-    "IsNotNull",
-    "IsTrue",
-    "IsFalse"
-};
+    {
+        "Equals", "NotEquals",
+        "GreaterThan", "GreaterThanOrEqual",
+        "LessThan", "LessThanOrEqual",
+        "Contains", "NotContains", "StartsWith", "EndsWith", "Matches",
+        "IsEmpty", "IsNotEmpty", "IsNull", "IsNotNull",
+        "IsTrue", "IsFalse"
+    };
 
-private static readonly string[] LogicalOperators =
-{
-    "AND",
-    "OR"
-};
+    private static readonly string[] LogicalOperators = { "AND", "OR" };
+
+    private static Dictionary<string, string> ConditionProperties() => new()
+    {
+        ["Left"] = "ANY",
+        ["Operator"] = "STRING",
+        ["Right"] = "ANY"
+    };
+
     public void Contribute(ICoreCatalog catalog)
     {
-        // ── Variable types ──
-        catalog.RegisterVariableType(new("STRING", "Text.")
+        // ── Variable types (all conversion logic lives in VariableValueConverter) ──
+        foreach (var (name, description, example, structured) in new[]
         {
-            Coerce = v => v as string ?? WorkflowExecutor.Stringify(v)
-        });
-        catalog.RegisterVariableType(new("NUMBER", "Whole or decimal number.")
+            ("STRING",    "Text.",                              "Hello",                                            false),
+            ("NUMBER",    "Integer or decimal number.",         "125.50",                                           false),
+            ("BOOLEAN",   "True or false.",                     "true",                                             false),
+            ("JSON",      "JSON object or array.",              "{\"name\": \"Saeil\", \"tags\": [1, 2, 3]}",       true),
+            ("DATATABLE", "Table containing rows and columns.", "[{\"name\": \"Saeil\", \"age\": 34}]",             true),
+            ("ROW",       "Single row of a DataTable.",         "{\"name\": \"Saeil\", \"age\": 34}",               true),
+        })
         {
-            Coerce = v => WorkflowExecutor.TryNumber(v, out var d)
-                ? (d % 1 == 0 && Math.Abs(d) < 9e18 ? (object)(long)d : d)
-                : throw new InvalidOperationException($"'{v}' is not a number.")
-        });
-        catalog.RegisterVariableType(new("BOOLEAN", "True or false.")
-        {
-            Coerce = v => WorkflowExecutor.ToBool(v)
-        });
+            var typeName = name;
+            catalog.RegisterVariableType(new(typeName, description)
+            {
+                Example = example,
+                Structured = structured,
+                Coerce = v => VariableValueConverter.Convert(v, typeName)
+            });
+        }
+
+        // Wildcard for action inputs / outputs only; never offered as a variable type.
+        catalog.RegisterVariableType(new("ANY", "Any runtime value.") { Internal = true });
 
         // ── Variable actions ──
+        catalog.RegisterAction(new("Variable.Create", "Creates a new workflow variable (re-running it resets the variable).",
+            new() { ["Name"] = "STRING", ["Type"] = "STRING", ["Value"] = "ANY" },
+            new() { ["Result"] = "ANY" },
+            Array.Empty<string>(), false)
+        { Category = "Variables" });
 
-catalog.RegisterAction(new(
-    "Variable.Create",
-    "Creates a new workflow variable.",
-    new()
-    {
-        ["Name"] = "STRING",
-        ["Type"] = "STRING",
-        ["Value"] = "ANY"
-    },
-    new()
-    {
-        ["Result"] = "ANY"
-    },
-    Array.Empty<string>(),
-    false)
-{
-    Category = "Variables"
-});
+        catalog.RegisterAction(new("Variable.Set", "Assigns a value to an existing variable.",
+            new() { ["Name"] = "STRING", ["Value"] = "ANY" },
+            new() { ["Result"] = "ANY" },
+            Array.Empty<string>(), false)
+        { Category = "Variables" });
 
-catalog.RegisterAction(new(
-    "Variable.Set",
-    "Assigns a value to an existing variable.",
-    new()
-    {
-        ["Name"] = "STRING",
-        ["Value"] = "ANY"
-    },
-    new()
-    {
-        ["Result"] = "ANY"
-    },
-    Array.Empty<string>(),
-    false)
-{
-    Category = "Variables"
-});
+        catalog.RegisterAction(new("Variable.Convert", "Converts a value to the specified variable type.",
+            new() { ["Value"] = "ANY", ["TargetType"] = "STRING" },
+            new() { ["Result"] = "ANY" },
+            Array.Empty<string>(), false)
+        { Category = "Variables" });
 
-catalog.RegisterAction(new(
-    "Variable.Convert",
-    "Converts a value to the specified variable type.",
-    new()
-    {
-        ["Value"] = "ANY",
-        ["TargetType"] = "STRING"
-    },
-    new()
-    {
-        ["Result"] = "ANY"
-    },
-    Array.Empty<string>(),
-    false)
-{
-    Category = "Variables"
-});
-        // catalog.RegisterVariableType(new("LIST", "Ordered list of values."));
-        // catalog.RegisterVariableType(new("DICTIONARY", "Key / value pairs."));
-        // catalog.RegisterVariableType(new("DATATABLE", "Rows and columns."));
-        // catalog.RegisterVariableType(new("ANY", "Any value; no coercion."));
-
-
-
-        // ── Variable types ──
-
-catalog.RegisterVariableType(new("STRING", "Text.")
-{
-    Coerce = v => VariableValueConverter.Convert(v, "STRING")
-});
-
-catalog.RegisterVariableType(new("NUMBER", "Integer or decimal number.")
-{
-    Coerce = v => VariableValueConverter.Convert(v, "NUMBER")
-});
-
-catalog.RegisterVariableType(new("JSON", "JSON object or array.")
-{
-    Coerce = v => VariableValueConverter.Convert(v, "JSON")
-});
-
-catalog.RegisterVariableType(new("DATATABLE", "Table containing rows and columns.")
-{
-    Coerce = v => VariableValueConverter.Convert(v, "DATATABLE")
-});
-
-catalog.RegisterVariableType(new("ROW", "Single row of a DataTable.")
-{
-    Coerce = v => VariableValueConverter.Convert(v, "ROW")
-});
-
-catalog.RegisterVariableType(new("BOOLEAN", "True or false.")
-{
-    Coerce = v => VariableValueConverter.Convert(v, "BOOLEAN")
-});
-
-// Internal wildcard type for action inputs and outputs.
-// Do not expose as a user-creatable variable type.
-catalog.RegisterVariableType(new("ANY", "Any runtime value."));
-
-
-
-        catalog.RegisterAction(
-    new CoreActionInfo(
-        "If",
-        "Runs Then when the condition is true, otherwise Else.",
-        new(),
-        new(),
-        new[] { "Then", "Else" },
-        true)
-    {
-        Category = "ControlFlow",
-        ConditionOperators = ComparisonOperators,
-        LogicalOperators = LogicalOperators,
-        SupportsMultipleConditions = true,
-        Properties = new()
-        {
-            ["LeftOperand"] = "ANY",
-            ["Operator"] = "STRING",
-            ["RightOperand"] = "ANY"
-        }
-    });
-
-    catalog.RegisterAction(
-    new CoreActionInfo(
-        "While",
-        "Repeats Body while the condition is true.",
-        new(),
-        new(),
-        new[] { "Body" },
-        true)
-    {
-        Category = "ControlFlow",
-        ConditionOperators = ComparisonOperators,
-        LogicalOperators = LogicalOperators,
-        SupportsMultipleConditions = true,
-        Properties = new()
-        {
-            ["LeftOperand"] = "ANY",
-            ["Operator"] = "STRING",
-            ["RightOperand"] = "ANY"
-        }
-    });
-        // ── Actions ──
         catalog.RegisterAction(new("SetVariable", "Assigns a value to a variable.",
             new() { ["Value"] = "ANY" },
             new() { ["Response"] = "ANY" },
-            Array.Empty<string>(), false));
+            Array.Empty<string>(), false)
+        { Category = "Variables" });
 
         catalog.RegisterAction(new("Evaluate", "Evaluates an expression over the workflow variables, e.g. \"count + 1\".",
             new() { ["Expression"] = "STRING" },
             new() { ["Response"] = "ANY" },
-            Array.Empty<string>(), false));
+            Array.Empty<string>(), false)
+        { Category = "Variables" });
 
-   
+        // ── Control flow ──
+        catalog.RegisterAction(new("If", "Runs Then when the condition is true, otherwise Else.",
+            new(), new(), new[] { "Then", "Else" }, true)
+        {
+            Category = "ControlFlow",
+            ConditionOperators = ComparisonOperators,
+            LogicalOperators = LogicalOperators,
+            SupportsMultipleConditions = true,
+            Properties = ConditionProperties()
+        });
 
-        catalog.RegisterAction(new(
-    "ForEachRow",
-    "Iterates through each row of a DataTable.",
-    new()
-    {
-        ["Table"] = "DATATABLE"
-    },
-    new()
-    {
-        ["Item"] = "ROW",
-        ["Index"] = "NUMBER"
-    },
-    new[] { "Body" },
-    false)
-{
-    Category = "ControlFlow"
-});
+        catalog.RegisterAction(new("While", "Repeats Body while the condition is true.",
+            new(), new(), new[] { "Body" }, true)
+        {
+            Category = "ControlFlow",
+            ConditionOperators = ComparisonOperators,
+            LogicalOperators = LogicalOperators,
+            SupportsMultipleConditions = true,
+            Properties = ConditionProperties()
+        });
+
+        catalog.RegisterAction(new("ForEach", "Loops over a list, dictionary, DataTable or JSON array/object. Over a DataTable, Item is a ROW.",
+            new() { ["Collection"] = "ANY" },
+            new() { ["Item"] = "ANY", ["Index"] = "NUMBER", ["Key"] = "ANY" },
+            new[] { "Body" }, false)
+        { Category = "ControlFlow" });
+
+        catalog.RegisterAction(new("ForEachRow", "Iterates through each row of a DataTable. Item is a ROW variable.",
+            new() { ["Table"] = "DATATABLE" },
+            new() { ["Item"] = "ROW", ["Index"] = "NUMBER" },
+            new[] { "Body" }, false)
+        { Category = "ControlFlow" });
 
         catalog.RegisterAction(new("ForCount", "Loops from From to To (inclusive) by Step.",
             new() { ["From"] = "NUMBER", ["To"] = "NUMBER", ["Step"] = "NUMBER" },
             new() { ["Index"] = "NUMBER" },
-            new[] { "Body" }, false));
-    //  catalog.RegisterAction(new("If", "Runs Then when the condition is true, otherwise Else.",
-    //         new(), new(),
-    //         new[] { "Then", "Else" }, true));
-    //     catalog.RegisterAction(new("While", "Repeats Body while the condition is true.",
-    //         new(), new(),
-    //         new[] { "Body" }, true));
+            new[] { "Body" }, false)
+        { Category = "ControlFlow" });
 
         catalog.RegisterAction(new("Break", "Exits the innermost loop.",
-            new(), new(), Array.Empty<string>(), false));
+            new(), new(), Array.Empty<string>(), false)
+        { Category = "ControlFlow" });
 
         catalog.RegisterAction(new("Continue", "Skips to the next iteration of the innermost loop.",
-            new(), new(), Array.Empty<string>(), false));
+            new(), new(), Array.Empty<string>(), false)
+        { Category = "ControlFlow" });
 
         catalog.RegisterAction(new("Return", "Stops the workflow successfully.",
-            new(), new(), Array.Empty<string>(), false));
+            new(), new(), Array.Empty<string>(), false)
+        { Category = "ControlFlow" });
 
         catalog.RegisterAction(new("TryCatch", "Runs Body; if an action fails, stores the message in Error and runs Catch.",
-            new(),
-            new() { ["Error"] = "STRING" },
-            new[] { "Body", "Catch" }, false));
+            new(), new() { ["Error"] = "STRING" },
+            new[] { "Body", "Catch" }, false)
+        { Category = "ControlFlow" });
 
         catalog.RegisterAction(new("Fail", "Fails the workflow (or the enclosing TryCatch) with a message.",
             new() { ["Message"] = "STRING" },
-            new(), Array.Empty<string>(), false));
+            new(), Array.Empty<string>(), false)
+        { Category = "ControlFlow" });
     }
 }
 

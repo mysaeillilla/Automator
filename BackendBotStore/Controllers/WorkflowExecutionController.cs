@@ -1,6 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using BackendBotStore.Data;      // <- namespace of your DbContext
+using BackendBotStore.Data;
 using BackendBotStore.Entities;
 using BackendBotStore.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -8,64 +8,22 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BackendBotStore.Controllers;
 
-/// <summary>Describes one built-in "Core" action so the designer can render it and its child blocks.</summary>
-public sealed record CoreActionInfo(
-    string Name,
-    string Description,
-    Dictionary<string, string> Inputs,
-    Dictionary<string, string> Outputs,
-    string[] Blocks,
-    bool HasCondition);
-
 [ApiController]
 [Route("api/[controller]")]
 public class WorkflowExecutionController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly WorkflowRunner _runner;
+    private readonly ICoreCatalog _catalog;
 
     /// <summary>Child-action lists a Core action can contain. Used to count nested actions.</summary>
     private static readonly string[] BlockProperties = { "Body", "Then", "Else", "Catch" };
 
-    private static readonly CoreActionInfo[] CoreActions =
-    {
-        new("SetVariable", "Assigns a value to a variable.",
-            new() { ["Value"] = "ANY" }, new() { ["Response"] = "ANY" }, Array.Empty<string>(), false),
-
-        new("Evaluate", "Evaluates an expression over the workflow variables, e.g. \"count + 1\".",
-            new() { ["Expression"] = "STRING" }, new() { ["Response"] = "ANY" }, Array.Empty<string>(), false),
-
-        new("If", "Runs Then when the condition is true, otherwise Else.",
-            new(), new(), new[] { "Then", "Else" }, true),
-
-        new("ForEach", "Loops over a list, dictionary, data table or JSON array/object.",
-            new() { ["Collection"] = "ANY" },
-            new() { ["Item"] = "ANY", ["Index"] = "NUMBER", ["Key"] = "ANY" },
-            new[] { "Body" }, false),
-
-        new("ForCount", "Loops from From to To (inclusive) by Step.",
-            new() { ["From"] = "NUMBER", ["To"] = "NUMBER", ["Step"] = "NUMBER" },
-            new() { ["Index"] = "NUMBER" },
-            new[] { "Body" }, false),
-
-        new("While", "Repeats Body while the condition is true.",
-            new(), new(), new[] { "Body" }, true),
-
-        new("Break", "Exits the innermost loop.", new(), new(), Array.Empty<string>(), false),
-        new("Continue", "Skips to the next iteration of the innermost loop.", new(), new(), Array.Empty<string>(), false),
-        new("Return", "Stops the workflow successfully.", new(), new(), Array.Empty<string>(), false),
-
-        new("TryCatch", "Runs Body; if an action fails, stores the message in Error and runs Catch.",
-            new(), new() { ["Error"] = "STRING" }, new[] { "Body", "Catch" }, false),
-
-        new("Fail", "Fails the workflow (or the enclosing TryCatch) with a message.",
-            new() { ["Message"] = "STRING" }, new(), Array.Empty<string>(), false),
-    };
-
-    public WorkflowExecutionController(ApplicationDbContext db, WorkflowRunner runner)
+    public WorkflowExecutionController(ApplicationDbContext db, WorkflowRunner runner, ICoreCatalog catalog)
     {
         _db = db;
         _runner = runner;
+        _catalog = catalog;
     }
 
     /// <summary>
@@ -84,10 +42,11 @@ public class WorkflowExecutionController : ControllerBase
     }
 
     /// <summary>
-    /// Built-in control actions (ClassName "Core"). They need no DLL and must not be listed under "packages".
+    /// Built-in Core actions (ClassName "Core"), straight from the catalog so it always matches the executor
+    /// (Variable.*, ForEach, ForEachRow, ...). They need no DLL and must not be listed under "packages".
     /// </summary>
     [HttpGet("core")]
-    public IActionResult GetCoreActions() => Ok(new { package = WorkflowExecutor.CorePackage, actions = CoreActions });
+    public IActionResult GetCoreActions() => Ok(new { package = _catalog.PackageName, actions = _catalog.Actions });
 
     /// <summary>
     /// Starts a saved workflow (looked up by its id in the Workflows table)
@@ -124,12 +83,23 @@ public class WorkflowExecutionController : ControllerBase
             return UnprocessableEntity(new { success = false, error = $"Stored JSON for workflow {workflowId} is invalid." });
         }
 
-        // 2. Count actions (including nested ones) from the resolved JSON.
+        // 2. Check the declared variable types before queuing the run (same rules the initializer applies),
+        //    so a bad type is reported here instead of as a failed execution.
+        // 3. Count actions (including nested ones) from the resolved JSON.
         //    With loops this is the number of steps defined, not the number that will execute.
         int totalActions;
         try
         {
             using var document = JsonDocument.Parse(resolvedJson);
+
+            var variableErrors = ValidateVariableTypes(document.RootElement);
+            if (variableErrors.Count > 0)
+                return UnprocessableEntity(new
+                {
+                    success = false,
+                    error = "Invalid variable definition(s): " + string.Join(" ", variableErrors)
+                });
+
             totalActions = CountActions(document.RootElement);
         }
         catch (JsonException)
@@ -168,6 +138,7 @@ public class WorkflowExecutionController : ControllerBase
     /// Add ?includeActions=true to also get the per-action detail for a finished run.
     /// Action ids are paths: "3" (top level), "3[2].1" (2nd-index iteration of loop 3, first child),
     /// "4.then.1" / "4.else.1" (If branches), "5.try.1" / "5.catch.1" (TryCatch).
+    /// DATATABLE values appear as { type, rowCount, headers, rows (first 100) }; ROW as an object of columns.
     /// </summary>
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetStatus(Guid id, [FromQuery] bool includeActions = false)
@@ -233,6 +204,44 @@ public class WorkflowExecutionController : ControllerBase
     }
 
     // ── helpers ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Every variable's "type" must be a user-creatable type registered in the catalog
+    /// (STRING, NUMBER, JSON, DATATABLE, ROW, BOOLEAN, plus contributor types). A missing type means STRING.
+    /// </summary>
+    private List<string> ValidateVariableTypes(JsonElement workflow)
+    {
+        var errors = new List<string>();
+        if (workflow.ValueKind != JsonValueKind.Object) return errors;
+
+        foreach (var section in workflow.EnumerateObject())
+        {
+            if (!section.Name.Equals("Variables", StringComparison.OrdinalIgnoreCase) ||
+                section.Value.ValueKind != JsonValueKind.Object)
+                continue;
+
+            foreach (var variable in section.Value.EnumerateObject())
+            {
+                if (variable.Value.ValueKind != JsonValueKind.Object)
+                {
+                    errors.Add($"'{variable.Name}' must be an object with value/type/input/output.");
+                    continue;
+                }
+
+                foreach (var field in variable.Value.EnumerateObject())
+                {
+                    if (!field.Name.Equals("Type", StringComparison.OrdinalIgnoreCase)) continue;
+
+                    var type = field.Value.ValueKind == JsonValueKind.String ? field.Value.GetString() : null;
+                    if (string.IsNullOrWhiteSpace(type) ||
+                        !_catalog.TryGetVariableType(type.Trim(), out var info) || info.Internal)
+                        errors.Add($"'{variable.Name}' has unsupported type '{(type ?? field.Value.GetRawText())}'.");
+                }
+            }
+        }
+
+        return errors;
+    }
 
     private static bool IsCoreName(string name) =>
         name.Equals(WorkflowExecutor.CorePackage, StringComparison.OrdinalIgnoreCase);

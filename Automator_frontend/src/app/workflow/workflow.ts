@@ -5,13 +5,35 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
-
 const API_BASE = 'https://localhost:5001/api';
-const VAR_TYPES = ['STRING', 'NUMBER', 'BOOLEAN', 'LIST', 'ANY'] as const;
-type VarType = (typeof VAR_TYPES)[number];
+
+/** A variable type from GET /api/Core/variable-types. */
+interface VarTypeDef {
+  name: string;
+  description: string;
+  example: string | null;
+  /** value is typed as JSON text (JSON / DATATABLE / ROW) */
+  structured: boolean;
+}
+
+/** Used until the endpoint answers (and if it fails). ANY is internal and never offered. */
+const DEFAULT_VAR_TYPE_DEFS: VarTypeDef[] = [
+  { name: 'STRING', description: 'Text.', example: 'Hello', structured: false },
+  { name: 'NUMBER', description: 'Integer or decimal number.', example: '125.50', structured: false },
+  { name: 'BOOLEAN', description: 'True or false.', example: 'true', structured: false },
+  { name: 'JSON', description: 'JSON object or array.', example: '{"name": "Saeil", "tags": [1, 2, 3]}', structured: true },
+  { name: 'DATATABLE', description: 'Table containing rows and columns.', example: '[{"name": "Saeil", "age": 34}]', structured: true },
+  { name: 'ROW', description: 'Single row of a DataTable.', example: '{"name": "Saeil", "age": 34}', structured: true },
+];
+type VarType = string;
+
+/** Inputs/outputs of these types only accept variables of the same type (a table, a row). */
+const STRICT_TYPES = new Set(['DATATABLE', 'ROW']);
+
 const UNARY_OPERATORS = new Set(['IsEmpty', 'IsNotEmpty', 'IsNull', 'IsNotNull', 'IsTrue', 'IsFalse']);
 const NUMERIC_TYPES = ['NUMBER', 'INT', 'INTEGER', 'LONG', 'DOUBLE', 'FLOAT', 'DECIMAL'];
 const KNOWN_BLOCKS = ['Then', 'Else', 'Body', 'Catch'];
+const TEMPLATE_REGEX = /\{\{\s*([A-Za-z_]\w*)/g;
 
 interface ActionDef {
   id: number;
@@ -70,7 +92,7 @@ interface FlowVariable {
   output: boolean;
 }
 
-interface Location {
+interface NodeLocation {
   node: FlowNode;
   list: FlowNode[];
   index: number;
@@ -81,6 +103,7 @@ interface Location {
 interface ActionDraft {
   node: FlowNode;
   inputFields: { key: string; type: string; long: boolean }[];
+  outputFields: { key: string; type: string }[];
   outputKeys: string[];
   inputs: Record<string, string>;
   outputs: Record<string, string>;
@@ -107,16 +130,16 @@ type DragPayload = { kind: 'new'; pkg: string; fn: string } | { kind: 'move'; ui
 })
 export class Workflow {
   private readonly http = inject(HttpClient);
+  private readonly route = inject(ActivatedRoute);
   private uidSeq = 0;
   private payload: DragPayload | null = null;
-private readonly route = inject(ActivatedRoute);
-private pendingWorkflow: any = null;
+  private pendingWorkflow: any = null;
 
-readonly workflowId = signal<string | null>(null);
-readonly workflowLoading = signal(false);
-readonly workflowError = signal('');
-readonly packagesLoaded = signal(false);
-  readonly varTypes = VAR_TYPES;
+  // ---- workflow loading ----
+  readonly workflowId = signal<string | null>(null);
+  readonly workflowLoading = signal(false);
+  readonly workflowError = signal('');
+  readonly packagesLoaded = signal(false);
 
   // ---- state ----
   readonly flowName = signal('Core Actions Demo');
@@ -124,6 +147,15 @@ readonly packagesLoaded = signal(false);
   readonly packages = signal<PackageDef[]>([]);
   readonly packagesLoading = signal(false);
   readonly packagesError = signal('');
+
+  /** Variable types offered when creating a variable (loaded from the backend). */
+  readonly varTypeDefs = signal<VarTypeDef[]>(DEFAULT_VAR_TYPE_DEFS);
+  readonly varTypesLoading = signal(false);
+  readonly varTypesError = signal('');
+  /** Names only; kept so code that used `varTypes` keeps working. */
+  get varTypes(): readonly string[] {
+    return this.varTypeDefs().map((t) => t.name);
+  }
 
   readonly actions = signal<FlowNode[]>([]);
   readonly variables = signal<FlowVariable[]>([]);
@@ -144,6 +176,8 @@ readonly packagesLoaded = signal(false);
   readonly importOpen = signal(false);
   readonly importText = signal('');
   readonly importError = signal('');
+  /** Notes about variables converted from the old types (LIST / ANY) when a workflow was opened. */
+  readonly migrationNotes = signal<string[]>([]);
 
   readonly uploading = signal(false);
   readonly uploadResult = signal<{ ok: boolean; body: string } | null>(null);
@@ -194,116 +228,247 @@ readonly packagesLoaded = signal(false);
     return this.variables().filter((v) => !q || v.name.toLowerCase().includes(q));
   });
 
+  /** Variables created by Variable.Create actions that have a literal Name (the backend accepts these too). */
+  readonly declaredVariables = computed<FlowVariable[]>(() => {
+    const found: FlowVariable[] = [];
+    const walk = (list: FlowNode[]) => {
+      for (const n of list) {
+        if (n.pkg === 'Core' && n.fn === 'Variable.Create') {
+          const name = (n.inputs['Name'] ?? '').trim();
+          if (/^[A-Za-z_]\w*$/.test(name)) {
+            found.push({
+              name,
+              type: (n.inputs['Type'] ?? '').trim().toUpperCase(), // '' = inferred from the value
+              value: null,
+              input: false,
+              output: false,
+            });
+          }
+        }
+        for (const b of Object.keys(n.blocks)) walk(n.blocks[b]);
+      }
+    };
+    walk(this.actions());
+    return found;
+  });
+
+  /** Everything a picker may offer: designer variables plus the ones declared by Variable.Create. */
+  readonly allVariables = computed<FlowVariable[]>(() => {
+    const names = new Set(this.variables().map((v) => v.name.toLowerCase()));
+    return [...this.variables(), ...this.declaredVariables().filter((d) => !names.has(d.name.toLowerCase()))];
+  });
+
+  /** Problems the backend would also reject; shown before uploading. */
+  readonly problems = computed<string[]>(() => {
+    const out: string[] = [];
+    const known = new Map(this.allVariables().map((v) => [v.name.toLowerCase(), v]));
+    const line = this.lineNumbers();
+
+    const walk = (list: FlowNode[]) => {
+      for (const n of list) {
+        const at = `Action ${line.get(n.uid)} (${n.fn})`;
+        const texts = [...Object.values(n.inputs)];
+        if (n.condition) texts.push(n.condition.left, n.condition.right);
+        for (const t of texts) {
+          for (const m of (t ?? '').matchAll(TEMPLATE_REGEX)) {
+            if (!known.has(m[1].toLowerCase())) out.push(`${at}: variable '${m[1]}' is not defined.`);
+          }
+        }
+        for (const [key, name] of Object.entries(n.outputs)) {
+          if (!name) continue;
+          const v = known.get(name.toLowerCase());
+          if (!v) {
+            out.push(`${at}: output '${key}' uses undefined variable '${name}'.`);
+            continue;
+          }
+          const expected = n.def?.outputs?.[key]?.toUpperCase();
+          if (n.fn === 'ForEachRow' && (key === 'Item' || key === 'Index')) {
+            const need = key === 'Item' ? 'ROW' : 'NUMBER';
+            if (v.type && v.type !== need) out.push(`${at}: '${key}' must be stored in a ${need} variable ('${name}' is ${v.type}).`);
+          } else if (expected === 'ROW' && v.type && v.type !== 'ROW') {
+            out.push(`${at}: '${key}' must be stored in a ROW variable ('${name}' is ${v.type}).`);
+          }
+        }
+        for (const b of Object.keys(n.blocks)) walk(n.blocks[b]);
+      }
+    };
+    walk(this.actions());
+    return [...new Set(out)];
+  });
+
   readonly workflowJson = computed(() => this.buildWorkflow());
   readonly workflowText = computed(() => JSON.stringify(this.workflowJson(), null, 2));
 
   constructor() {
+    this.loadVariableTypes();
     this.loadPackages();
 
-     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe((params) => {
-    const id = params.get('id');
-    this.workflowId.set(id);
-    if (id) this.loadWorkflow(id);
-  });
-  }
-loadWorkflow(id: string): void {
-  this.workflowLoading.set(true);
-  this.workflowError.set('');
-  this.http
-    .get(`${API_BASE}/Workflows/${encodeURIComponent(id)}`, {
-      headers: { accept: '*/*' },
-      responseType: 'text',
-    })
-    .subscribe({
-      next: (text) => {
-        try {
-          this.pendingWorkflow = this.unwrapWorkflow(JSON.parse(text));
-          this.applyPendingWorkflow();
-        } catch (e) {
-          this.workflowError.set(`Workflow ${id} could not be read: ${(e as Error).message}`);
-        }
-        this.workflowLoading.set(false);
-      },
-      error: (err: HttpErrorResponse) => {
-        this.workflowError.set(
-          err.status === 404 ? `Workflow ${id} was not found.` : `Could not load workflow ${id} (${err.status || 'network error'}).`,
-        );
-        this.workflowLoading.set(false);
-      },
+    this.route.paramMap.pipe(takeUntilDestroyed()).subscribe((params) => {
+      const id = params.get('id');
+      this.workflowId.set(id);
+      if (id) this.loadWorkflow(id);
     });
-}
-
-private applyPendingWorkflow(): void {
-  if (!this.pendingWorkflow || !this.packagesLoaded()) return; // wait for the catalog
-  const json = this.pendingWorkflow;
-  this.pendingWorkflow = null;
-  try {
-    this.applyWorkflowJson(json);
-  } catch (e) {
-    this.workflowError.set(`Workflow could not be opened: ${(e as Error).message}`);
   }
-}
 
-/** Accepts the workflow itself, a JSON string, or an envelope such as { id, name, json: {...} }. */
-private unwrapWorkflow(raw: any): any {
-  if (typeof raw === 'string') return this.unwrapWorkflow(JSON.parse(raw));
-  if (raw && typeof raw === 'object') {
-    if (raw.Actions) return raw;
-    for (const key of ['workflowJson', 'workflow', 'json', 'content', 'definition', 'data']) {
-      if (raw[key]) return this.unwrapWorkflow(raw[key]);
+  // =====================================================================
+  // Loading a saved workflow
+  // =====================================================================
+  loadWorkflow(id: string): void {
+    this.workflowLoading.set(true);
+    this.workflowError.set('');
+    this.http
+      .get(`${API_BASE}/Workflows/${encodeURIComponent(id)}`, {
+        headers: { accept: '*/*' },
+        responseType: 'text',
+      })
+      .subscribe({
+        next: (text) => {
+          try {
+            this.pendingWorkflow = this.unwrapWorkflow(JSON.parse(text));
+            this.applyPendingWorkflow();
+          } catch (e) {
+            this.workflowError.set(`Workflow ${id} could not be read: ${(e as Error).message}`);
+          }
+          this.workflowLoading.set(false);
+        },
+        error: (err: HttpErrorResponse) => {
+          this.workflowError.set(
+            err.status === 404
+              ? `Workflow ${id} was not found.`
+              : `Could not load workflow ${id} (${err.status || 'network error'}).`,
+          );
+          this.workflowLoading.set(false);
+        },
+      });
+  }
+
+  private applyPendingWorkflow(): void {
+    if (!this.pendingWorkflow || !this.packagesLoaded()) return; // wait for the catalog
+    const json = this.pendingWorkflow;
+    this.pendingWorkflow = null;
+    try {
+      this.applyWorkflowJson(json);
+    } catch (e) {
+      this.workflowError.set(`Workflow could not be opened: ${(e as Error).message}`);
     }
   }
-  throw new Error("response has no 'Actions' object");
-}
 
-importWorkflow(): void {
-  try {
-    this.applyWorkflowJson(JSON.parse(this.importText()));
-    this.importOpen.set(false);
-  } catch (e) {
-    this.importError.set(`Invalid workflow JSON: ${(e as Error).message}`);
+  /** Accepts the workflow itself, a JSON string, or an envelope such as { id, name, json: {...} }. */
+  private unwrapWorkflow(raw: any): any {
+    if (typeof raw === 'string') return this.unwrapWorkflow(JSON.parse(raw));
+    if (raw && typeof raw === 'object') {
+      if (raw.Actions) return raw;
+      for (const key of ['workflowJson', 'workflow', 'json', 'content', 'definition', 'data']) {
+        if (raw[key]) return this.unwrapWorkflow(raw[key]);
+      }
+    }
+    throw new Error("response has no 'Actions' object");
   }
-}
 
-private applyWorkflowJson(json: any): void {
-  const vars: FlowVariable[] = Object.entries<any>(json.variables ?? {}).map(([name, v]) => ({
-    name,
-    type: (v.type ?? 'ANY') as VarType,
-    value: v.value,
-    input: !!v.input,
-    output: !!v.output,
-  }));
-  const nodes = Object.entries<any>(json.Actions ?? {})
-    .sort((a, b) => Number(a[0]) - Number(b[0]))
-    .map(([, a]) => this.deserializeNode(a));
+  importWorkflow(): void {
+    try {
+      this.applyWorkflowJson(JSON.parse(this.importText()));
+      this.importOpen.set(false);
+    } catch (e) {
+      this.importError.set(`Invalid workflow JSON: ${(e as Error).message}`);
+    }
+  }
 
-  this.flowName.set(json.flow_name ?? 'Imported flow');
-  this.version.set(json.version ?? '1.0.0');
-  this.variables.set(vars);
-  this.actions.set(nodes);
-  this.select(null);
-}
+  private applyWorkflowJson(json: any): void {
+    const notes: string[] = [];
+    const vars: FlowVariable[] = Object.entries<any>(json.variables ?? {}).map(([name, v]) => {
+      const migrated = this.migrateVariable(name, v);
+      if (migrated.note) notes.push(migrated.note);
+      return migrated.variable;
+    });
+
+    const nodes = Object.entries<any>(json.Actions ?? {})
+      .sort((a, b) => Number(a[0]) - Number(b[0]))
+      .map(([, a]) => this.deserializeNode(a));
+
+    this.flowName.set(json.flow_name ?? 'Imported flow');
+    this.version.set(json.version ?? '1.0.0');
+    this.variables.set(vars);
+    this.actions.set(nodes);
+    this.migrationNotes.set(notes);
+    this.select(null);
+  }
+
+  /**
+   * Older workflows used LIST / DICTIONARY / ANY (or an object describing a structure).
+   * The engine now supports STRING, NUMBER, BOOLEAN, JSON, DATATABLE and ROW only, so these are converted.
+   */
+  private migrateVariable(name: string, v: any): { variable: FlowVariable; note?: string } {
+    const declared = typeof v?.type === 'string' ? v.type.toUpperCase() : v?.type == null ? 'STRING' : 'OBJECT';
+    let type = declared;
+    let value = v?.value;
+    let note: string | undefined;
+
+    const isRecord = (x: unknown) => !!x && typeof x === 'object' && !Array.isArray(x);
+
+    if (declared === 'LIST') {
+      type = Array.isArray(value) && value.length > 0 && value.every(isRecord) ? 'DATATABLE' : 'JSON';
+    } else if (declared === 'DICTIONARY' || declared === 'ANY' || declared === 'OBJECT') {
+      type = 'JSON';
+    }
+
+    if (type !== declared) note = `'${name}': ${declared} → ${type}`;
+
+    // an empty string is not a valid value for the structured types
+    if (['JSON', 'ROW', 'DATATABLE'].includes(type) && value === '') value = null;
+
+    return { variable: { name, type, value, input: !!v?.input, output: !!v?.output }, note };
+  }
+
   // =====================================================================
-  // Packages
+  // Packages and variable types
   // =====================================================================
- loadPackages(): void {
-  this.packagesLoading.set(true);
-  this.packagesError.set('');
-  this.http.get<PackageDef[]>(`${API_BASE}/Packages`, { params: { includeCore: true } }).subscribe({
-    next: (pkgs) => {
-      this.packages.set(pkgs ?? []);
-      this.packagesLoading.set(false);
-      this.packagesLoaded.set(true);
-      this.applyPendingWorkflow();
-    },
-    error: (err: HttpErrorResponse) => {
-      this.packagesError.set(`Could not load packages (${err.status || 'network error'}).`);
-      this.packagesLoading.set(false);
-      this.packagesLoaded.set(true);
-      this.applyPendingWorkflow();
-    },
-  });
-}
+  loadPackages(): void {
+    this.packagesLoading.set(true);
+    this.packagesError.set('');
+    this.http.get<PackageDef[]>(`${API_BASE}/Packages`, { params: { includeCore: true } }).subscribe({
+      next: (pkgs) => {
+        this.packages.set(pkgs ?? []);
+        this.packagesLoading.set(false);
+        this.packagesLoaded.set(true);
+        this.applyPendingWorkflow();
+      },
+      error: (err: HttpErrorResponse) => {
+        this.packagesError.set(`Could not load packages (${err.status || 'network error'}).`);
+        this.packagesLoading.set(false);
+        this.packagesLoaded.set(true);
+        this.applyPendingWorkflow();
+      },
+    });
+  }
+
+  /** Loads the user-creatable variable types (GET /api/Core/variable-types); keeps the defaults if the call fails. */
+  loadVariableTypes(): void {
+    this.varTypesLoading.set(true);
+    this.varTypesError.set('');
+    this.http.get<VarTypeDef[]>(`${API_BASE}/Core/variable-types`).subscribe({
+      next: (types) => {
+        const list = (types ?? []).map((t) => ({
+          name: String(t.name).toUpperCase(),
+          description: t.description ?? '',
+          example: t.example ?? null,
+          structured: !!t.structured,
+        }));
+        if (list.length) this.varTypeDefs.set(list);
+        this.varTypesLoading.set(false);
+      },
+      error: (err: HttpErrorResponse) => {
+        this.varTypesError.set(`Could not load variable types (${err.status || 'network error'}); showing defaults.`);
+        this.varTypesLoading.set(false);
+      },
+    });
+  }
+
+  /** Description / example of a type, for the variable dialog. */
+  varTypeInfo(type: string): VarTypeDef | null {
+    const t = (type ?? '').toUpperCase();
+    return this.varTypeDefs().find((d) => d.name === t) ?? null;
+  }
 
   toggleGroup(name: string): void {
     this.collapsed.update((s) => {
@@ -351,7 +516,7 @@ private applyWorkflowJson(json: any): void {
     list: FlowNode[] = this.actions(),
     owner: string | null = null,
     block = 'root',
-  ): Location | null {
+  ): NodeLocation | null {
     for (let i = 0; i < list.length; i++) {
       const n = list[i];
       if (n.uid === uid) return { node: n, list, index: i, owner, block };
@@ -450,6 +615,7 @@ private applyWorkflowJson(json: any): void {
     if (!confirm('Remove all actions and variables?')) return;
     this.actions.set([]);
     this.variables.set([]);
+    this.migrationNotes.set([]);
     this.select(null);
   }
 
@@ -534,8 +700,9 @@ private applyWorkflowJson(json: any): void {
       inputFields: Object.keys(node.inputs).map((key) => ({
         key,
         type: def?.inputs?.[key] ?? 'ANY',
-        long: /json|expression|message/i.test(key),
+        long: /json|expression|message|value/i.test(key),
       })),
+      outputFields: Object.keys(node.outputs).map((key) => ({ key, type: def?.outputs?.[key] ?? 'ANY' })),
       outputKeys: Object.keys(node.outputs),
       inputs: { ...node.inputs },
       outputs: { ...node.outputs },
@@ -559,6 +726,23 @@ private applyWorkflowJson(json: any): void {
     target[key] = (target[key] ?? '') + `{{${name}}}`;
   }
 
+  /**
+   * Variables offered for an action INPUT of the given type. A DATATABLE input takes DATATABLE (or JSON) variables,
+   * a ROW input takes ROW (or JSON) variables; every other type accepts any variable (the engine converts).
+   */
+  varsForInput(inputType: string): FlowVariable[] {
+    const t = (inputType ?? 'ANY').toUpperCase();
+    const all = this.allVariables();
+    return STRICT_TYPES.has(t) ? all.filter((v) => !v.type || v.type === t || v.type === 'JSON') : all;
+  }
+
+  /** Variables offered for an action OUTPUT: ROW and DATATABLE outputs must go to a variable of that exact type. */
+  varsForOutput(outputType: string): FlowVariable[] {
+    const t = (outputType ?? 'ANY').toUpperCase();
+    const all = this.allVariables();
+    return STRICT_TYPES.has(t) ? all.filter((v) => !v.type || v.type === t) : all;
+  }
+
   // =====================================================================
   // Variables
   // =====================================================================
@@ -567,13 +751,20 @@ private applyWorkflowJson(json: any): void {
     this.varDraft.set({ editing: false, name: '', type: 'STRING', valueText: '', input: false, output: false });
   }
 
+  /** Puts the type's example into the value box (button in the variable dialog). */
+  useExample(): void {
+    const d = this.varDraft();
+    const example = d ? this.varTypeInfo(d.type)?.example : null;
+    if (d && example) this.varDraft.set({ ...d, valueText: example });
+  }
+
   editVariable(v: FlowVariable): void {
     this.varError.set('');
     this.varDraft.set({
       editing: true,
       name: v.name,
       type: v.type,
-      valueText: typeof v.value === 'string' ? v.value : JSON.stringify(v.value),
+      valueText: this.valueToText(v.value),
       input: v.input,
       output: v.output,
     });
@@ -587,7 +778,7 @@ private applyWorkflowJson(json: any): void {
       this.varError.set('Name must start with a letter or underscore and contain only letters, digits or _.');
       return;
     }
-    if (!d.editing && this.variables().some((v) => v.name === name)) {
+    if (!d.editing && this.variables().some((v) => v.name.toLowerCase() === name.toLowerCase())) {
       this.varError.set(`A variable named "${name}" already exists.`);
       return;
     }
@@ -610,8 +801,37 @@ private applyWorkflowJson(json: any): void {
     this.variables.update((list) => list.filter((v) => v.name !== name));
   }
 
+  /** Short text for the variable list; tables show their size instead of every row. */
   displayValue(v: FlowVariable): string {
-    return typeof v.value === 'string' ? v.value : JSON.stringify(v.value);
+    if (v.value === null || v.value === undefined) return '';
+    if (v.type === 'DATATABLE') {
+      const rows = Array.isArray(v.value) ? v.value : ((v.value as any)?.rows ?? []);
+      return `${rows.length} row${rows.length === 1 ? '' : 's'}`;
+    }
+    return this.valueToText(v.value);
+  }
+
+  /** Hint text for the value box of the variable dialog (the type's example from the backend). */
+  valueHint(type: string): string {
+    const info = this.varTypeInfo(type);
+    if (!info) return '';
+    if (info.structured) return `e.g. ${info.example ?? ''}`;
+    if ((type ?? '').toUpperCase() === 'BOOLEAN') return 'true or false';
+    return info.example ? `e.g. ${info.example}` : info.description;
+  }
+
+  /** True for types whose value is JSON and should use a multi-line box. */
+  isStructuredType(type: string): boolean {
+    return this.varTypeInfo(type)?.structured ?? false;
+  }
+
+  private valueToText(value: unknown): string {
+    if (value === null || value === undefined) return '';
+    return typeof value === 'string' ? value : JSON.stringify(value, null, this.isObject(value) ? 2 : 0);
+  }
+
+  private isObject(value: unknown): boolean {
+    return typeof value === 'object' && value !== null;
   }
 
   private isVariableUsed(name: string): boolean {
@@ -620,31 +840,65 @@ private applyWorkflowJson(json: any): void {
     return text.includes(`{{${name}`);
   }
 
+  private parseJsonText(text: string, what: string): unknown {
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error(`${what} must be valid JSON.`);
+    }
+  }
+
+  /** Turns the text typed in the variable dialog into the value stored in the workflow JSON. */
   private parseVarValue(text: string, type: VarType): unknown {
     const t = text.trim();
-    switch (type) {
+    switch ((type ?? '').toUpperCase()) {
       case 'STRING':
         return text;
+
       case 'NUMBER': {
         if (t === '') return 0;
         const n = Number(t);
         if (Number.isNaN(n)) throw new Error('Value is not a valid number.');
         return n;
       }
-      case 'BOOLEAN':
-        return t.toLowerCase() === 'true';
-      case 'LIST': {
-        if (t === '') return [];
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(t);
-        } catch {
-          throw new Error('List value must be valid JSON, e.g. [1, 2, 3].');
+
+      case 'BOOLEAN': {
+        const l = t.toLowerCase();
+        if (l !== '' && l !== 'true' && l !== 'false' && l !== '1' && l !== '0') {
+          throw new Error('Value must be true or false.');
         }
-        if (!Array.isArray(parsed)) throw new Error('List value must be a JSON array.');
+        return l === 'true' || l === '1';
+      }
+
+      case 'JSON':
+        return t === '' ? null : this.parseJsonText(t, 'JSON value');
+
+      case 'DATATABLE': {
+        if (t === '') return null;
+        const parsed = this.parseJsonText(t, 'Table value');
+        const isRecord = (x: unknown) => !!x && typeof x === 'object' && !Array.isArray(x);
+        const arrayOfObjects = Array.isArray(parsed) && parsed.every(isRecord);
+        const headersRows =
+          isRecord(parsed) &&
+          Array.isArray((parsed as any).headers) &&
+          ((parsed as any).rows === undefined || Array.isArray((parsed as any).rows));
+        if (!arrayOfObjects && !headersRows) {
+          throw new Error('Table value must be an array of objects or {"headers": [...], "rows": [...]}.');
+        }
         return parsed;
       }
+
+      case 'ROW': {
+        if (t === '') return null;
+        const parsed = this.parseJsonText(t, 'Row value');
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          throw new Error('Row value must be a single JSON object.');
+        }
+        return parsed;
+      }
+
       default:
+        // types added by backend contributors (e.g. GUID): keep JSON when it parses, otherwise the text
         try {
           return JSON.parse(t);
         } catch {
@@ -669,6 +923,7 @@ private applyWorkflowJson(json: any): void {
       return l === 'true' ? true : l === 'false' ? false : s;
     }
     if (t === 'STRING') return s;
+    // ANY / JSON / DATATABLE / ROW: a {{variable}} stays text, literal JSON is parsed
     return this.coerceAny(s);
   }
 
@@ -726,6 +981,7 @@ private applyWorkflowJson(json: any): void {
       if (fp) packages[name] = fp;
     }
 
+    // Only designer variables are written; Variable.Create variables are created by the engine at run time.
     const variables: Record<string, unknown> = {};
     for (const v of this.variables()) {
       variables[v.name] = { value: v.value, type: v.type, input: v.input, output: v.output };
@@ -748,33 +1004,10 @@ private applyWorkflowJson(json: any): void {
     this.importError.set('');
     this.importOpen.set(true);
   }
- goback(): void {
-  window.history.back();
-}
-  // importWorkflow(): void {
-  //   try {
-  //     const json = JSON.parse(this.importText());
-  //     const vars: FlowVariable[] = Object.entries<any>(json.variables ?? {}).map(([name, v]) => ({
-  //       name,
-  //       type: (v.type ?? 'ANY') as VarType,
-  //       value: v.value,
-  //       input: !!v.input,
-  //       output: !!v.output,
-  //     }));
-  //     const nodes = Object.entries<any>(json.Actions ?? {})
-  //       .sort((a, b) => Number(a[0]) - Number(b[0]))
-  //       .map(([, a]) => this.deserializeNode(a));
 
-  //     this.flowName.set(json.flow_name ?? 'Imported flow');
-  //     this.version.set(json.version ?? '1.0.0');
-  //     this.variables.set(vars);
-  //     this.actions.set(nodes);
-  //     this.select(null);
-  //     this.importOpen.set(false);
-  //   } catch (e) {
-  //     this.importError.set(`Invalid workflow JSON: ${(e as Error).message}`);
-  //   }
-  // }
+  goback(): void {
+    window.history.back();
+  }
 
   private toText(v: unknown): string {
     if (v === null || v === undefined) return '';
@@ -816,27 +1049,27 @@ private applyWorkflowJson(json: any): void {
   }
 
   upload(): void {
-  this.uploading.set(true);
-  this.uploadResult.set(null);
+    this.uploading.set(true);
+    this.uploadResult.set(null);
 
-  // Send the workflow as a plain JSON object (Angular serialises it and sets application/json).
-  this.http
-    .post(`${API_BASE}/Workflows/upload`, this.workflowJson(), {
-      headers: { accept: '*/*' },
-      responseType: 'text',
-    })
-    .subscribe({
-      next: (res) => {
-        this.uploadResult.set({ ok: true, body: this.pretty(res) });
-        this.uploading.set(false);
-      },
-      error: (err: HttpErrorResponse) => {
-        const detail = typeof err.error === 'string' ? err.error : err.message;
-        this.uploadResult.set({ ok: false, body: `${err.status || ''} ${this.pretty(detail)}`.trim() });
-        this.uploading.set(false);
-      },
-    });
-}
+    // Send the workflow as a plain JSON object (Angular serialises it and sets application/json).
+    this.http
+      .post(`${API_BASE}/Workflows/upload`, this.workflowJson(), {
+        headers: { accept: '*/*' },
+        responseType: 'text',
+      })
+      .subscribe({
+        next: (res) => {
+          this.uploadResult.set({ ok: true, body: this.pretty(res) });
+          this.uploading.set(false);
+        },
+        error: (err: HttpErrorResponse) => {
+          const detail = typeof err.error === 'string' ? err.error : err.message;
+          this.uploadResult.set({ ok: false, body: `${err.status || ''} ${this.pretty(detail)}`.trim() });
+          this.uploading.set(false);
+        },
+      });
+  }
 
   private pretty(text: string): string {
     try {
