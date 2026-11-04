@@ -7,7 +7,6 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using BackendBotStore.Actions;
-using static BackendBotStore.Services.WorkflowVariableStore;
 
 namespace BackendBotStore.Services;
 
@@ -131,6 +130,9 @@ public class WorkflowExecutor
     public List<string> Logs { get; } = new();
     public string? LastError { get; private set; }
 
+    /// <summary>Raw return value of the last package action that ran (used by ExecuteSingleAction).</summary>
+    public object? LastActionResult { get; private set; }
+
     /// <summary>Optional progress callbacks (used to persist per-action status while the run is in flight).</summary>
     public IWorkflowProgressListener? Listener { get; set; }
 
@@ -194,6 +196,68 @@ public class WorkflowExecutor
         catch (Exception ex)
         {
             return Fail($"Workflow failed: {ex.Message}");
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────
+    //  Single action
+    // ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Runs ONE package action outside a workflow, with the same package loading, {{variable}} resolution,
+    /// argument conversion and error handling a workflow run uses. The raw return value is in LastActionResult.
+    /// Returns false (see LastError / Logs) when the action cannot be validated or fails.
+    /// </summary>
+    /// <param name="packageName">Package name, i.e. the ClassName an action has in a workflow.</param>
+    /// <param name="dllPath">DLL of that package.</param>
+    /// <param name="inputs">Parameter name -> literal or "{{variable}}".</param>
+    /// <param name="variables">Variables the inputs refer to (same shape as the workflow's "variables" section).</param>
+    public bool ExecuteSingleAction(
+        string packageName,
+        string dllPath,
+        string functionName,
+        Dictionary<string, JsonElement>? inputs,
+        Dictionary<string, WorkflowVariable>? variables = null)
+    {
+        Reset();
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(packageName) ||
+                packageName.Equals(CorePackage, StringComparison.OrdinalIgnoreCase))
+                return Fail("Core actions run only inside a workflow.");
+
+            Packages = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { [packageName] = dllPath };
+            WorkflowVariableInitializer.Initialize(_store, variables);
+
+            var action = new WorkflowAction
+            {
+                ClassName = packageName,
+                FunctionName = functionName,
+                Inputs = new Dictionary<string, JsonElement>(inputs ?? new(), StringComparer.OrdinalIgnoreCase)
+            };
+
+            Actions = new() { action };
+            ValidateBlock(Actions, "", inLoop: false);   // package listed, every {{variable}} defined
+
+            CurrentActionId = "1";
+            CurrentAction = action;
+            ExecutePackageAction("1", action);
+
+            Log("Action completed successfully.");
+            return true;
+        }
+        catch (WorkflowStopException ex)
+        {
+            return Fail(ex.Message);
+        }
+        catch (OperationCanceledException)
+        {
+            return Fail("Action was cancelled.");
+        }
+        catch (Exception ex)
+        {
+            return Fail($"Action failed: {ex.Message}");
         }
     }
 
@@ -268,6 +332,7 @@ public class WorkflowExecutor
             var args = BuildArguments(method, inputs);
 
             var result = UnwrapTask(method.Invoke(instance, args));
+            LastActionResult = result;
 
             var written = MapOutputs(action, result);
             Notify(l => l.ActionCompleted(id, written));
@@ -1172,6 +1237,7 @@ public class WorkflowExecutor
         CurrentAction = null;
         CurrentActionId = null;
         LastError = null;
+        LastActionResult = null;
         Logs.Clear();
         _instanceCache.Clear();
         _typeCache.Clear();

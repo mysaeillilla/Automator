@@ -1,9 +1,10 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { NgTemplateOutlet } from '@angular/common';
+import { JsonPipe, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Subscription, switchMap, takeWhile, tap, timer } from 'rxjs';
 
 const API_BASE = 'https://localhost:5001/api';
 
@@ -34,6 +35,14 @@ const UNARY_OPERATORS = new Set(['IsEmpty', 'IsNotEmpty', 'IsNull', 'IsNotNull',
 const NUMERIC_TYPES = ['NUMBER', 'INT', 'INTEGER', 'LONG', 'DOUBLE', 'FLOAT', 'DECIMAL'];
 const KNOWN_BLOCKS = ['Then', 'Else', 'Body', 'Catch'];
 const TEMPLATE_REGEX = /\{\{\s*([A-Za-z_]\w*)/g;
+/** {{name}}, {{name.prop}}, {{name[0]}}, {{name['col']}} */
+const REF_PATH = String.raw`((?:\.\w+|\[\d+\]|\['[^']*'\])*)`;
+const FULL_REF = new RegExp(String.raw`^\s*\{\{\s*([A-Za-z_]\w*)` + REF_PATH + String.raw`\s*\}\}\s*$`);
+const ANY_REF = new RegExp(String.raw`\{\{\s*([A-Za-z_]\w*)` + REF_PATH + String.raw`\s*\}\}`, 'g');
+const POLL_MS = 700;
+const MAX_POLL_MS = 10 * 60 * 1000;
+/** Actions whose output only repeats a variable they name themselves: no automatic output variable. */
+const NO_AUTO_OUTPUT = new Set(['Core.Variable.Create', 'Core.Variable.Set']);
 
 interface ActionDef {
   id: number;
@@ -120,10 +129,72 @@ interface VarDraft {
   output: boolean;
 }
 
+/** One executed action, from GET /api/WorkflowExecution/{id}?includeActions=true. */
+interface ActionRunRow {
+  sequence: number;
+  actionId: string;
+  className: string;
+  functionName: string;
+  status: string;
+  inputs: unknown;
+  outputs: unknown;
+  error: string | null;
+  startedAtUtc?: string;
+  completedAtUtc?: string;
+  durationMs?: number | null;
+}
+
+interface ExecutionStatus {
+  executionId: string;
+  status: string; // Pending | Running | Succeeded | Failed
+  success?: boolean;
+  error?: string | null;
+  failedActionId?: string | null;
+  totalActions: number;
+  completedActions: number;
+  startedAtUtc?: string;
+  completedAtUtc?: string;
+  durationMs?: number;
+  outputs?: Record<string, unknown> | null;
+  actions?: ActionRunRow[] | null;
+}
+
+/** What the designer shows on a node after a run (loops: the last iteration plus a run count). */
+interface NodeRun {
+  status: string;
+  runs: number;
+  error: string | null;
+  row: ActionRunRow;
+}
+
+interface ActionTestResult {
+  title: string;
+  ok: boolean;
+  request: unknown;
+  response: unknown;
+  error: string;
+  warnings: string[];
+  durationMs: number;
+  inputs?: unknown;   // what the action actually received
+  logs?: string[];    // engine log lines
+}
+
+interface DataViewer {
+  title: string;
+  data: unknown;
+  /** variable type, when known (ROW is shown as a column / value list) */
+  type?: string;
+}
+
+type ViewerModel =
+  | { kind: 'table'; headers: string[]; rows: string[][]; info: string }
+  | { kind: 'row'; entries: { key: string; value: string }[] }
+  | { kind: 'text'; text: string };
+
 type DragPayload = { kind: 'new'; pkg: string; fn: string } | { kind: 'move'; uid: string };
 
 @Component({
-  imports: [FormsModule, NgTemplateOutlet],
+  imports: [FormsModule, NgTemplateOutlet, JsonPipe],
   selector: 'app-workflow',
   styleUrl: './workflow.css',
   templateUrl: './workflow.html',
@@ -134,6 +205,10 @@ export class Workflow {
   private uidSeq = 0;
   private payload: DragPayload | null = null;
   private pendingWorkflow: any = null;
+  private readonly destroyRef = inject(DestroyRef);
+  private runSub: Subscription | null = null;
+  /** node uid -> variables created automatically for its outputs */
+  private readonly autoCreated = new Map<string, string[]>();
 
   // ---- workflow loading ----
   readonly workflowId = signal<string | null>(null);
@@ -178,6 +253,18 @@ export class Workflow {
   readonly importError = signal('');
   /** Notes about variables converted from the old types (LIST / ANY) when a workflow was opened. */
   readonly migrationNotes = signal<string[]>([]);
+
+  // ---- execution ----
+  readonly autoOutputs = signal(true);
+  readonly running = signal(false);
+  readonly runPanelOpen = signal(false);
+  readonly runStatus = signal<ExecutionStatus | null>(null);
+  readonly runError = signal('');
+  readonly actionRunning = signal<string | null>(null);
+  readonly actionResult = signal<ActionTestResult | null>(null);
+  readonly viewer = signal<DataViewer | null>(null);
+  /** Text of the workflow as last loaded or uploaded; used to warn that a run uses the saved version. */
+  private readonly savedText = signal<string | null>(null);
 
   readonly uploading = signal(false);
   readonly uploadResult = signal<{ ok: boolean; body: string } | null>(null);
@@ -299,6 +386,74 @@ export class Workflow {
   readonly workflowJson = computed(() => this.buildWorkflow());
   readonly workflowText = computed(() => JSON.stringify(this.workflowJson(), null, 2));
 
+  /** True when the designer differs from what is saved on the server. */
+  readonly dirty = computed(() => this.savedText() !== null && this.savedText() !== this.workflowText());
+
+  /**
+   * Last run, per node. Action ids from the engine are paths: "3", "3[2].1" (loop iteration), "4.then.1",
+   * "4.else.1", "5.try.1", "5.catch.1"; iteration numbers are dropped so every iteration maps to the same node.
+   */
+  readonly nodeRuns = computed(() => {
+    const map = new Map<string, NodeRun>();
+    const rows = this.runStatus()?.actions ?? [];
+    if (!rows.length) return map;
+
+    const byPath = new Map<string, string>();
+    const walk = (list: FlowNode[], prefix: string) => {
+      list.forEach((n, i) => {
+        const id = `${prefix}${i + 1}`;
+        byPath.set(id, n.uid);
+        for (const b of Object.keys(n.blocks)) walk(n.blocks[b], this.blockPrefix(n, b, id));
+      });
+    };
+    walk(this.actions(), '');
+
+    for (const row of [...rows].sort((a, b) => a.sequence - b.sequence)) {
+      const uid = byPath.get(row.actionId.replace(/\[\d+\]/g, '[*]'));
+      if (!uid) continue;
+      const prev = map.get(uid);
+      map.set(uid, { status: row.status, runs: (prev?.runs ?? 0) + 1, error: row.error ?? prev?.error ?? null, row });
+    }
+    return map;
+  });
+
+  /** What the data popup shows: a table, a column / value list, or text. */
+  readonly viewerModel = computed<ViewerModel | null>(() => {
+    const v = this.viewer();
+    if (!v) return null;
+    const data = v.data;
+    const isRec = (x: unknown): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x);
+
+    let headers: string[] | null = null;
+    let rows: unknown[] | null = null;
+    let total: number | undefined;
+
+    if (Array.isArray(data) && data.length && data.every(isRec)) {
+      rows = data;
+      headers = [...new Set(data.flatMap((r) => Object.keys(r as object)))];
+    } else if (isRec(data) && Array.isArray(data['headers']) && Array.isArray(data['rows'])) {
+      headers = (data['headers'] as unknown[]).map(String);
+      rows = data['rows'] as unknown[];
+      total = typeof data['rowCount'] === 'number' ? (data['rowCount'] as number) : rows.length;
+    }
+
+    if (headers && rows) {
+      const h = headers;
+      const table = rows.map((r) =>
+        Array.isArray(r) ? h.map((_, i) => this.cellText(r[i])) : h.map((c) => this.cellText(isRec(r) ? r[c] : '')),
+      );
+      const more = total !== undefined && total > rows.length ? ` of ${total}` : '';
+      return { kind: 'table', headers: h, rows: table, info: `${rows.length}${more} row${rows.length === 1 ? '' : 's'}` };
+    }
+
+    if (isRec(data) && (v.type === 'ROW' || Object.values(data).every((x) => x === null || typeof x !== 'object'))) {
+      return { kind: 'row', entries: Object.entries(data).map(([key, value]) => ({ key, value: this.cellText(value) })) };
+    }
+
+    const text = typeof data === 'string' ? data : (JSON.stringify(data, null, 2) ?? '');
+    return { kind: 'text', text };
+  });
+
   constructor() {
     this.loadVariableTypes();
     this.loadPackages();
@@ -392,6 +547,7 @@ export class Workflow {
     this.actions.set(nodes);
     this.migrationNotes.set(notes);
     this.select(null);
+    this.savedText.set(this.workflowText());
   }
 
   /**
@@ -581,6 +737,7 @@ export class Workflow {
 
   addFromPalette(pkg: string, def: ActionDef): void {
     const node = this.newNode(pkg, def.name, def);
+    this.setupNewNode(node);
     const sel = this.selectedUid() ? this.locate(this.selectedUid()!) : null;
     if (sel) sel.list.splice(sel.index + 1, 0, node);
     else this.actions().push(node);
@@ -592,9 +749,11 @@ export class Workflow {
   deleteNode(uid: string): void {
     const loc = this.locate(uid);
     if (!loc) return;
+    const removed = this.collectUids(loc.node);
     loc.list.splice(loc.index, 1);
     if (this.selectedUid() === uid) this.select(null);
     this.commit();
+    this.removeAutoVariables(removed);
   }
 
   deleteSelected(): void {
@@ -616,6 +775,8 @@ export class Workflow {
     this.actions.set([]);
     this.variables.set([]);
     this.migrationNotes.set([]);
+    this.autoCreated.clear();
+    this.runStatus.set(null);
     this.select(null);
   }
 
@@ -668,6 +829,7 @@ export class Workflow {
         if (p.kind === 'new') {
           const def = this.catalog().get(`${p.pkg}.${p.fn}`)?.def ?? null;
           const node = this.newNode(p.pkg, p.fn, def);
+          this.setupNewNode(node);
           target.splice(index, 0, node);
           this.commit();
           this.select(node.uid);
@@ -837,7 +999,7 @@ export class Workflow {
   private isVariableUsed(name: string): boolean {
     const used = new Set<string>();
     const text = JSON.stringify(this.actions().map((n) => this.serializeNode(n, used)));
-    return text.includes(`{{${name}`);
+    return new RegExp(String.raw`\{\{\s*${name}(?![A-Za-z0-9_])`).test(text);
   }
 
   private parseJsonText(text: string, what: string): unknown {
@@ -1060,6 +1222,8 @@ export class Workflow {
       })
       .subscribe({
         next: (res) => {
+          this.rememberUploadedId(res);
+          this.savedText.set(this.workflowText());
           this.uploadResult.set({ ok: true, body: this.pretty(res) });
           this.uploading.set(false);
         },
@@ -1069,6 +1233,387 @@ export class Workflow {
           this.uploading.set(false);
         },
       });
+  }
+
+  // =====================================================================
+  // Automatic output variables
+  // =====================================================================
+
+  /** Maps an action's declared output type (or a .NET type name) to a variable type. */
+  private outputVarType(declared: string): string {
+    const t = (declared ?? '').toUpperCase();
+    if (this.varTypeDefs().some((d) => d.name === t)) return t;
+    if (/^(INT|INT\d+|INTEGER|LONG|DOUBLE|FLOAT|DECIMAL|SINGLE)$/.test(t)) return 'NUMBER';
+    if (t === 'BOOL') return 'BOOLEAN';
+    if (/^(LIST|ARRAY|DICTIONARY|OBJECT)$/.test(t)) return 'JSON';
+    return 'STRING'; // ANY and unknown types
+  }
+
+  private defaultValueFor(type: string): unknown {
+    switch (type) {
+      case 'STRING':
+        return '';
+      case 'NUMBER':
+        return 0;
+      case 'BOOLEAN':
+        return false;
+      default:
+        return null; // JSON / DATATABLE / ROW
+    }
+  }
+
+  /**
+   * Creates one variable per output of a newly added action (e.g. ShowString_Result) and connects it.
+   * Switched off with the "Auto output variables" checkbox.
+   */
+  private setupNewNode(node: FlowNode): void {
+    if (!this.autoOutputs() || !node.def) return;
+    if (NO_AUTO_OUTPUT.has(`${node.pkg}.${node.fn}`)) return;
+
+    const keys = Object.keys(node.def.outputs ?? {});
+    if (!keys.length) return;
+
+    const created: FlowVariable[] = [];
+    const taken = new Set(this.allVariables().map((v) => v.name.toLowerCase()));
+
+    for (const key of keys) {
+      let base = `${node.fn}_${key}`.replace(/\W/g, '_');
+      if (/^\d/.test(base)) base = `_${base}`;
+      let name = base;
+      for (let i = 2; taken.has(name.toLowerCase()); i++) name = `${base}${i}`;
+      taken.add(name.toLowerCase());
+
+      const type = this.outputVarType(node.def.outputs[key]);
+      created.push({
+        name,
+        type,
+        value: this.defaultValueFor(type),
+        input: false,
+        // loop / control-flow variables are working values, not results of the flow
+        output: node.def.category !== 'ControlFlow',
+      });
+      node.outputs[key] = name;
+    }
+
+    this.variables.update((list) => [...list, ...created]);
+    this.autoCreated.set(node.uid, created.map((v) => v.name));
+  }
+
+  private collectUids(node: FlowNode): string[] {
+    return [node.uid, ...Object.values(node.blocks).flatMap((l) => l.flatMap((c) => this.collectUids(c)))];
+  }
+
+  /** After deleting actions, drops the variables made for them if nothing else uses them any more. */
+  private removeAutoVariables(uids: string[]): void {
+    const names = uids.flatMap((u) => this.autoCreated.get(u) ?? []);
+    uids.forEach((u) => this.autoCreated.delete(u));
+    if (!names.length) return;
+    const unused = names.filter((n) => !this.isVariableUsed(n));
+    if (unused.length) this.variables.update((list) => list.filter((v) => !unused.includes(v.name)));
+  }
+
+  // =====================================================================
+  // Run the whole workflow
+  // =====================================================================
+
+  /** Runs the saved workflow (POST /WorkflowExecution/execute/{id}) and follows it until it finishes. */
+  runWorkflow(): void {
+    const id = this.workflowId();
+    this.runError.set('');
+    if (!id) {
+      this.runStatus.set(null);
+      this.runError.set('This workflow has not been saved yet. Upload it first, then run it.');
+      this.runPanelOpen.set(true);
+      return;
+    }
+    if (this.dirty() && !confirm('There are unsaved changes. Run the last saved version anyway?')) return;
+
+    this.cancelRun();
+    this.running.set(true);
+    this.runStatus.set(null);
+    this.runPanelOpen.set(true);
+
+    this.http.post<{ executionId: string }>(`${API_BASE}/WorkflowExecution/execute/${encodeURIComponent(id)}`, null).subscribe({
+      next: (res) => this.pollExecution(res.executionId),
+      error: (err: HttpErrorResponse) => {
+        this.runError.set(this.describeError(err));
+        this.running.set(false);
+      },
+    });
+  }
+
+  private pollExecution(executionId: string): void {
+    const started = Date.now();
+    this.runSub = timer(0, POLL_MS)
+      .pipe(
+        switchMap(() =>
+          this.http.get<ExecutionStatus>(`${API_BASE}/WorkflowExecution/${executionId}`, {
+            params: { includeActions: true },
+          }),
+        ),
+        tap((status) => this.runStatus.set(status)),
+        takeWhile((status) => this.inFlight(status) && Date.now() - started < MAX_POLL_MS, true),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        error: (err: HttpErrorResponse) => {
+          this.runError.set(this.describeError(err));
+          this.running.set(false);
+        },
+        complete: () => {
+          if (this.inFlight(this.runStatus())) {
+            this.runError.set('Stopped waiting for the run to finish. It may still be running on the server.');
+          }
+          this.running.set(false);
+        },
+      });
+  }
+
+  /** Stops following the run (the run itself keeps going on the server). */
+  cancelRun(): void {
+    this.runSub?.unsubscribe();
+    this.runSub = null;
+    this.running.set(false);
+  }
+
+  private inFlight(s: ExecutionStatus | null): boolean {
+    return !!s && (s.status === 'Pending' || s.status === 'Running');
+  }
+
+  closeRunPanel(): void {
+    this.runPanelOpen.set(false);
+  }
+
+  /** Output variables of the last run as name / value pairs. */
+  outputEntries(s: ExecutionStatus | null): [string, unknown][] {
+    return Object.entries(s?.outputs ?? {});
+  }
+
+  progressPercent(s: ExecutionStatus | null): number {
+    if (!s || !s.totalActions) return 0;
+    return s.status === 'Succeeded' ? 100 : Math.min(100, Math.round((s.completedActions / s.totalActions) * 100));
+  }
+
+  statusClass(status: string | null | undefined): string {
+    return (status ?? '').toLowerCase();
+  }
+
+  fmtDuration(ms: number | null | undefined): string {
+    if (ms === null || ms === undefined) return '';
+    return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
+  }
+
+  /** Prefix the engine uses for the actions inside a block of the node with the given id. */
+  private blockPrefix(n: FlowNode, block: string, id: string): string {
+    if (n.pkg === 'Core') {
+      const fn = n.fn.toLowerCase();
+      if (fn === 'if') return `${id}.${block.toLowerCase()}.`;
+      if (fn === 'trycatch') return `${id}.${block === 'Catch' ? 'catch' : 'try'}.`;
+    }
+    return `${id}[*].`; // loops
+  }
+
+  /** The id of the workflow after an upload, when the response contains one. */
+  private rememberUploadedId(body: string): void {
+    try {
+      const json = JSON.parse(body);
+      const id = json?.id ?? json?.workflowId ?? json?.Id;
+      if (id !== undefined && id !== null && !this.workflowId()) this.workflowId.set(String(id));
+    } catch {
+      /* not JSON: nothing to remember */
+    }
+  }
+
+  private describeError(err: HttpErrorResponse): string {
+    const e = err.error;
+    if (typeof e === 'string' && e) {
+      try {
+        const j = JSON.parse(e);
+        return j?.error ?? j?.title ?? e;
+      } catch {
+        return e;
+      }
+    }
+    if (e && typeof e === 'object') return e.error ?? e.title ?? JSON.stringify(e);
+    return `${err.status || 'Network error'} ${err.message}`.trim();
+  }
+
+  // =====================================================================
+  // Run one action (POST /Execution/execute)
+  // =====================================================================
+
+  /** True when the action can be run on its own (it comes from a package DLL). */
+  canRunAction(node: FlowNode): boolean {
+    return node.pkg !== 'Core';
+  }
+
+  /**
+   * Runs a single package action with the values currently in the editor. {{variables}} are replaced by the
+   * variables' values in the designer, so test with variables that have a value.
+   */
+  runAction(node: FlowNode): void {
+    const warnings: string[] = [];
+
+    if (!this.canRunAction(node)) {
+      this.showActionResult({
+        title: node.fn, ok: false, request: null, response: null, warnings,
+        error: 'Core actions (If, loops, variables ...) only run inside a workflow. Use "Run workflow" instead.',
+        durationMs: 0,
+      });
+      return;
+    }
+
+    const pkg = this.packages().find((p) => p.name === node.pkg && !p.isBuiltIn);
+    if (!pkg?.filePath) {
+      this.showActionResult({
+        title: `${node.pkg}.${node.fn}`, ok: false, request: null, response: null, warnings,
+        error: `Package '${node.pkg}' has no DLL path in the package list.`,
+        durationMs: 0,
+      });
+      return;
+    }
+
+    const body = this.buildSingleRequest(node, pkg, warnings);
+const title = `${node.pkg}.${node.fn}`;
+const started = performance.now();
+this.actionRunning.set(node.uid);
+
+this.http
+  .post(`${API_BASE}/Execution/execute`, body, { headers: { accept: '*/*' }, responseType: 'text' })
+  .subscribe({
+    next: (text) => {
+      const res = this.parseMaybeJson(text) as any;
+      this.actionRunning.set(null);
+      this.showActionResult({
+        title,
+        ok: res?.success !== false,
+        request: body,
+        response: res && typeof res === 'object' && 'data' in res ? res.data : res,
+        inputs: res?.inputs,
+        logs: res?.logs ?? [],
+        error: res?.error ?? '',
+        warnings,
+        durationMs: res?.durationMs ?? Math.round(performance.now() - started),
+      });
+    },
+    error: (err: HttpErrorResponse) => {
+      const res = this.parseMaybeJson(typeof err.error === 'string' ? err.error : '') as any;
+      this.actionRunning.set(null);
+      this.showActionResult({
+        title,
+        ok: false,
+        request: body,
+        response: null,
+        inputs: res?.inputs,
+        logs: res?.logs ?? [],
+        error: this.describeError(err),
+        warnings,
+        durationMs: res?.durationMs ?? Math.round(performance.now() - started),
+      });
+    },
+  });
+  }
+
+  private showActionResult(result: ActionTestResult): void {
+    this.actionResult.set(result);
+  }
+
+  private parseMaybeJson(text: string): unknown {
+    if (!text) return null;
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
+  }
+
+  /** Inputs for a test run: literals typed like the workflow JSON, {{refs}} replaced by designer values. */
+ private buildSingleRequest(node: FlowNode, pkg: PackageDef, warnings: string[]) {
+  const inputs: Record<string, unknown> = {};
+  const used = new Set<string>();
+
+  for (const [key, text] of Object.entries(node.inputs)) {
+    if (!text?.trim()) continue;
+    for (const m of text.matchAll(TEMPLATE_REGEX)) used.add(m[1].toLowerCase());
+
+    if (text.includes('{{')) {
+      inputs[key] = text;                              // the server resolves it
+    } else {
+      const value = this.coerce(text, node.def?.inputs?.[key] ?? 'ANY');
+      if (value !== undefined) inputs[key] = value;
+    }
+  }
+
+  const variables: Record<string, { value: unknown; type: string; input: boolean; output: boolean }> = {};
+  for (const name of used) {
+    const v = this.variables().find((x) => x.name.toLowerCase() === name);
+    if (!v) {
+      warnings.push(`'${name}' is not a variable with a value in the designer (variables made by Variable.Create only exist while a workflow runs).`);
+      continue;
+    }
+    if (v.value === null || v.value === undefined) warnings.push(`'${v.name}' has no value in the designer.`);
+    // input:false so an empty value is passed as null instead of being rejected
+    variables[v.name] = { value: v.value, type: v.type, input: false, output: false };
+  }
+
+  return { dllPath: pkg.filePath, className: node.pkg, functionName: node.fn, inputs, variables };
+}
+
+  closeActionResult(): void {
+    this.actionResult.set(null);
+  }
+
+  // =====================================================================
+  // Data popups
+  // =====================================================================
+
+  /** Opens the data popup for any value (a table, a row, JSON or text). */
+  viewData(title: string, data: unknown, type?: string): void {
+    this.viewer.set({ title, data, type });
+  }
+
+  viewVariable(v: FlowVariable): void {
+    this.viewData(`${v.name} (${v.type})`, v.value, v.type);
+  }
+
+  closeViewer(): void {
+    this.viewer.set(null);
+  }
+
+  copyViewer(): void {
+    const m = this.viewerModel();
+    if (!m) return;
+    const text =
+      m.kind === 'text'
+        ? m.text
+        : m.kind === 'row'
+          ? m.entries.map((e) => `${e.key}\t${e.value}`).join('\n')
+          : [m.headers.join('\t'), ...m.rows.map((r) => r.join('\t'))].join('\n');
+    navigator.clipboard?.writeText(text);
+  }
+
+  /** True when a value should get a "View" button instead of being printed inline. */
+  isComplex(value: unknown): boolean {
+    return value !== null && typeof value === 'object';
+  }
+
+  /** One-line text for lists; tables and arrays are summarised. */
+  preview(value: unknown): string {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'object') {
+      const o = value as Record<string, unknown>;
+      if (Array.isArray(o['headers']) && Array.isArray(o['rows'])) {
+        return `DATATABLE · ${o['rowCount'] ?? (o['rows'] as unknown[]).length} rows`;
+      }
+      if (Array.isArray(value)) return `[${value.length} item${value.length === 1 ? '' : 's'}]`;
+    }
+    const text = typeof value === 'string' ? value : JSON.stringify(value);
+    return text.length > 80 ? `${text.slice(0, 80)}…` : text;
+  }
+
+  private cellText(v: unknown): string {
+    if (v === null || v === undefined) return '';
+    return typeof v === 'object' ? JSON.stringify(v) : String(v);
   }
 
   private pretty(text: string): string {

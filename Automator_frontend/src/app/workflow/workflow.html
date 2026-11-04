@@ -1,18 +1,28 @@
 <div class="app">
 
   <div class="toolbar">
-
-    <div class="left">
     <button (click)="goback()">Back</button>
 
-       <input class="title-input" aria-label="Flow name"
-           [ngModel]="flowName()" (ngModelChange)="flowName.set($event)" />
-    </div>
-
     <button class="primary" (click)="upload()" [disabled]="uploading() || !actionCount()">
-      {{ uploading() ? 'Saving...' : 'Save' }}
+      {{ uploading() ? 'Uploading…' : 'Upload' }}
     </button>
+    <button (click)="showJson.set(true)">View JSON</button>
+    <button (click)="openImport()">Import JSON</button>
 
+    <button class="run" (click)="runWorkflow()" [disabled]="running() || !actionCount()"
+            [title]="workflowId() ? 'Run the saved workflow' : 'Upload the workflow first'">
+      {{ running() ? 'Running…' : '▶ Run workflow' }}
+    </button>
+    @if (runStatus() && !running()) { <button (click)="runPanelOpen.set(true)">Last run</button> }
+    @if (dirty()) { <span class="muted dirty">Unsaved changes</span> }
+
+    <label class="auto-out" title="Create a variable for the outputs of every action you add">
+      <input type="checkbox" [ngModel]="autoOutputs()" (ngModelChange)="autoOutputs.set($event)" />
+      Auto output variables
+    </label>
+
+    <input class="title-input" aria-label="Flow name"
+           [ngModel]="flowName()" (ngModelChange)="flowName.set($event)" />
   </div>
 
   <!-- Old variable types converted when the workflow was opened -->
@@ -107,6 +117,7 @@
             </div>
             <div class="var-value" [title]="displayValue(v)">{{ displayValue(v) }}</div>
             <div class="var-actions">
+              <button class="icon" title="View value" (click)="viewVariable(v)">👁</button>
               <button class="icon" title="Edit" (click)="editVariable(v)">✎</button>
               <button class="icon" title="Delete" (click)="deleteVariable(v.name)">🗑</button>
             </div>
@@ -150,7 +161,19 @@
         <span class="fn">{{ node.fn }}</span>
         @if (!node.def) { <span class="warn" title="Action not found in loaded packages">⚠</span> }
         <span class="summary">{{ summary(node) }}</span>
+        @if (nodeRuns().get(node.uid); as r) {
+          <span [class]="'run-badge ' + statusClass(r.status)"
+                [title]="r.error || 'Click to see the inputs and outputs of the last run'"
+                (click)="$event.stopPropagation(); viewData(node.fn + ' (last run)', { inputs: r.row.inputs, outputs: r.row.outputs, error: r.error })">
+            {{ r.status }}@if (r.runs > 1) { ×{{ r.runs }} }
+          </span>
+        }
         <span class="node-actions">
+          @if (canRunAction(node)) {
+            <button class="icon" title="Run only this action (uses the variable values from the designer)"
+                    [disabled]="actionRunning() !== null"
+                    (click)="$event.stopPropagation(); runAction(node)">{{ actionRunning() === node.uid ? '…' : '▶' }}</button>
+          }
           <button class="icon" title="Move up" (click)="$event.stopPropagation(); moveBy(node.uid, -1)">▲</button>
           <button class="icon" title="Move down" (click)="$event.stopPropagation(); moveBy(node.uid, 1)">▼</button>
           <button class="icon" title="Edit" (click)="$event.stopPropagation(); openEditor(node)">✎</button>
@@ -275,9 +298,12 @@
       </label>
       <label>Type
         <select [(ngModel)]="v.type">
-          @for (t of varTypes; track t) { <option [value]="t">{{ t }}</option> }
+          @for (t of varTypeDefs(); track t.name) {
+            <option [value]="t.name" [title]="t.description">{{ t.name }} — {{ t.description }}</option>
+          }
         </select>
       </label>
+      @if (varTypesError()) { <p class="error hint">{{ varTypesError() }}</p> }
       <label>Default value
         @if (isStructuredType(v.type)) {
           <!-- JSON / DATATABLE / ROW are typed as JSON text -->
@@ -292,7 +318,14 @@
           <input [(ngModel)]="v.valueText" [placeholder]="valueHint(v.type)" />
         }
       </label>
-      <p class="muted hint">{{ valueHint(v.type) }}</p>
+      @if (varTypeInfo(v.type); as info) {
+        <p class="muted hint">
+          {{ info.description }}
+          @if (info.example) {
+            <button type="button" class="link" (click)="useExample()">Use example</button>
+          }
+        </p>
+      }
       <label class="check"><input type="checkbox" [(ngModel)]="v.input" /> Use as input</label>
       <label class="check"><input type="checkbox" [(ngModel)]="v.output" /> Use as output</label>
       @if (varError()) { <p class="error">{{ varError() }}</p> }
@@ -330,6 +363,178 @@
       <div class="dialog-actions">
         <button (click)="importOpen.set(false)">Cancel</button>
         <button class="primary" (click)="importWorkflow()" [disabled]="!importText().trim()">Import</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ================= Workflow run ================= -->
+@if (runPanelOpen()) {
+  <div class="overlay" (click)="closeRunPanel()">
+    <div class="dialog wide" (click)="$event.stopPropagation()">
+      @if (runStatus(); as st) {
+        <h3>
+          Workflow run
+          <span [class]="'status-pill ' + statusClass(st.status)">{{ st.status }}</span>
+          @if (st.durationMs) { <small>{{ fmtDuration(st.durationMs) }}</small> }
+        </h3>
+
+        <div class="progress" title="{{ st.completedActions }} of {{ st.totalActions }} actions">
+          <div class="bar" [style.width.%]="progressPercent(st)"></div>
+        </div>
+        <p class="muted">{{ st.completedActions }} of {{ st.totalActions }} actions completed</p>
+
+        @if (st.error) {
+          <p class="error">
+            {{ st.error }}
+            @if (st.failedActionId) { <small>(action {{ st.failedActionId }})</small> }
+          </p>
+        }
+
+        @if (outputEntries(st).length) {
+          <h4>Output variables</h4>
+          <table class="data">
+            <thead><tr><th>Name</th><th>Value</th><th></th></tr></thead>
+            <tbody>
+              @for (o of outputEntries(st); track o[0]) {
+                <tr>
+                  <td><strong>{{ o[0] }}</strong></td>
+                  <td class="cell">{{ preview(o[1]) }}</td>
+                  <td>@if (isComplex(o[1])) { <button class="link" (click)="viewData(o[0], o[1])">View</button> }</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+
+        @if (st.actions?.length) {
+          <h4>Actions</h4>
+          <div class="table-scroll">
+            <table class="data">
+              <thead><tr><th>#</th><th>Id</th><th>Action</th><th>Status</th><th>Time</th><th>Data</th></tr></thead>
+              <tbody>
+                @for (a of st.actions; track a.sequence) {
+                  <tr [class.failed]="a.status === 'Failed'">
+                    <td>{{ a.sequence }}</td>
+                    <td><code>{{ a.actionId }}</code></td>
+                    <td>{{ a.className }}.{{ a.functionName }}</td>
+                    <td><span [class]="'status-pill ' + statusClass(a.status)">{{ a.status }}</span></td>
+                    <td>{{ fmtDuration(a.durationMs) }}</td>
+                    <td>
+                      <button class="link" (click)="viewData(a.functionName + ' · inputs', a.inputs)">Inputs</button>
+                      <button class="link" (click)="viewData(a.functionName + ' · outputs', a.outputs)">Outputs</button>
+                    </td>
+                  </tr>
+                  @if (a.error) { <tr class="failed"><td></td><td colspan="5" class="error">{{ a.error }}</td></tr> }
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      } @else {
+        <h3>Workflow run</h3>
+        @if (running()) { <p class="muted">Starting…</p> }
+      }
+
+      @if (runError()) { <p class="error">{{ runError() }}</p> }
+
+      <div class="dialog-actions">
+        @if (running()) { <button (click)="cancelRun()">Stop waiting</button> }
+        <button (click)="runWorkflow()" [disabled]="running()">Run again</button>
+        <button class="primary" (click)="closeRunPanel()">Close</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ================= Single action result ================= -->
+@if (actionResult(); as r) {
+  <div class="overlay" (click)="closeActionResult()">
+    <div class="dialog wide" (click)="$event.stopPropagation()">
+      <h3>
+        {{ r.title }}
+        <span [class]="'status-pill ' + (r.ok ? 'succeeded' : 'failed')">{{ r.ok ? 'Succeeded' : 'Failed' }}</span>
+        @if (r.durationMs) { <small>{{ fmtDuration(r.durationMs) }}</small> }
+      </h3>
+
+      @if (r.error) { <p class="error">{{ r.error }}</p> }
+      @if (r.warnings.length) {
+        <ul class="warnings">
+          @for (w of r.warnings; track w) { <li>{{ w }}</li> }
+        </ul>
+      }
+
+      @if (r.response !== null && r.response !== undefined) {
+        <h4>Response</h4>
+        <pre class="json">{{ isComplex(r.response) ? (r.response | json) : r.response }}</pre>
+        @if (isComplex(r.response)) {
+          <button class="link" (click)="viewData(r.title + ' · response', r.response)">Open in data viewer</button>
+        }
+@if (r.inputs) {
+  <h4>Inputs received</h4>
+  <pre class="json small">{{ r.inputs | json }}</pre>
+}
+@if (r.logs?.length) {
+  <h4>Log</h4>
+  <pre class="json small">{{ r.logs?.join('\n') }}</pre>
+}
+
+      } @else if (r.ok) {
+        <p class="muted">The action returned no data.</p>
+      }
+
+      @if (r.request) {
+        <h4>Request sent</h4>
+        <pre class="json small">{{ r.request | json }}</pre>
+      }
+
+      <div class="dialog-actions">
+        <button class="primary" (click)="closeActionResult()">Close</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ================= Data viewer ================= -->
+@if (viewer(); as v) {
+  <div class="overlay" (click)="closeViewer()">
+    <div class="dialog wide" (click)="$event.stopPropagation()">
+      <h3>{{ v.title }}</h3>
+
+      @if (viewerModel(); as m) {
+        @switch (m.kind) {
+          @case ('table') {
+            <p class="muted">{{ m.info }}</p>
+            <div class="table-scroll">
+              <table class="data">
+                <thead><tr>@for (h of m.headers; track $index) { <th>{{ h }}</th> }</tr></thead>
+                <tbody>
+                  @for (row of m.rows; track $index) {
+                    <tr>@for (cell of row; track $index) { <td class="cell">{{ cell }}</td> }</tr>
+                  } @empty {
+                    <tr><td [attr.colspan]="m.headers.length || 1" class="muted">No rows.</td></tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+          @case ('row') {
+            <table class="data">
+              <thead><tr><th>Column</th><th>Value</th></tr></thead>
+              <tbody>
+                @for (e of m.entries; track e.key) { <tr><td><strong>{{ e.key }}</strong></td><td class="cell">{{ e.value }}</td></tr> }
+              </tbody>
+            </table>
+          }
+          @default {
+            <pre class="json">{{ m.text }}</pre>
+          }
+        }
+      }
+
+      <div class="dialog-actions">
+        <button (click)="copyViewer()">Copy</button>
+        <button class="primary" (click)="closeViewer()">Close</button>
       </div>
     </div>
   </div>
