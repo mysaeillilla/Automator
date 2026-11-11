@@ -12,11 +12,24 @@ public DbSet<Package> Packages => Set<Package>();
 public DbSet<PackageAction> PackageActions => Set<PackageAction>();
    public DbSet<WorkflowExecutionStatus> WorkflowExecutions => Set<WorkflowExecutionStatus>();
    public DbSet<Workflow> Workflows => Set<Workflow>();
+   public DbSet<User> Users  => Set<User>();
    public DbSet<WorkflowActionExecutionStatus> WorkflowActionExecutions => Set<WorkflowActionExecutionStatus>();
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+ modelBuilder.Entity<User>(entity =>
+        {
+            entity.HasKey(x => x.Id);
 
+            entity.HasIndex(x => x.Username)
+                  .IsUnique();
+
+            entity.HasIndex(x => x.Email)
+                  .IsUnique();
+
+            entity.Property(x => x.Role)
+                  .HasConversion<string>();
+        });
         modelBuilder.Entity<Package>(entity =>
         {
             entity.HasKey(p => p.Id);
