@@ -1,3 +1,9 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
+using BackendBotStore.Entities;
+using Microsoft.IdentityModel.Tokens;
+
 namespace BackendBotStore.Services;
 
 public class TokenService
@@ -27,7 +33,7 @@ public class TokenService
             new Claim(ClaimTypes.Role, user.Role.ToString())
         };
 
-        var key = new SymmetricSecurityKey(
+        var key = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(
             Encoding.UTF8.GetBytes(jwtKey)
         );
 

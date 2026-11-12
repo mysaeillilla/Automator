@@ -1,6 +1,12 @@
+using System.Security.Claims;
+using System.Text;
 using BackendBotStore.Data;
+using BackendBotStore.Entities;
 using BackendBotStore.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);

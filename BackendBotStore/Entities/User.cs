@@ -9,7 +9,6 @@ public enum UserRole
     Runner = 4
 }
 
-namespace API.Entities;
 
 public class User
 {
